@@ -1,5 +1,7 @@
 # 3d-printer-monitor
 
+[![Quality](https://github.com/sebastianrau/3d-printer-monitor/actions/workflows/quality.yml/badge.svg)](https://github.com/sebastianrau/3d-printer-monitor/actions/workflows/quality.yml)
+
 `3d-printer-monitor` monitors printers, creates in-memory camera snapshots at print
 milestones, and sends notifications through a configurable messaging provider.
 It is designed as a small framework: printer communication and messaging
