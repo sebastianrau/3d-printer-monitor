@@ -87,7 +87,7 @@ func (t *Telegram) do(req *http.Request) error {
 	if err != nil {
 		return err
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
@@ -178,7 +178,7 @@ func (t *Telegram) rawUpdates(ctx context.Context, params url.Values) ([]map[str
 	if err != nil {
 		return nil, err
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
