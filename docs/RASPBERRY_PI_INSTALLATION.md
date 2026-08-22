@@ -185,9 +185,6 @@ git clone https://github.com/sebastianrau/3d-printer-monitor.git
 cd 3d-printer-monitor
 ```
 
-For a private repository, use an SSH deploy key or another Git authentication
-method instead of placing a token in shell history.
-
 ## 7. Configure the application
 
 ```bash
@@ -202,7 +199,6 @@ At minimum, configure:
 - `printers[].bambu.serial`
 - `printers[].bambu.access_code`
 - `messaging.telegram.bot_token`
-- `messaging.telegram.chat_id`
 
 Protect the credentials:
 
