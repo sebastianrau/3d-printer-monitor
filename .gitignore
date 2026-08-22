@@ -1,0 +1,25 @@
+# Local configuration and secrets
+config.yaml
+config.*.yaml
+!config.example.yaml
+.env
+.env.*
+
+test/
+tests/
+test-result/*
+!test-result/.gitkeep
+
+# Go build and test artifacts
+/3d-printer-monitor
+*.test
+*.out
+coverage.*
+profile.*
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*~

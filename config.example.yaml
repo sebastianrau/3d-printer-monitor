@@ -1,0 +1,109 @@
+# 3D Printer Monitor configuration reference
+# Copy this file to config.yaml and replace the example credentials.
+# config.yaml is ignored by Git. Never commit real access codes or bot tokens.
+# Unknown fields are rejected, so spelling errors fail during startup.
+
+# Supported values: PANIC, FATAL, ERROR, WARN, INFO, DEBUG, TRACE. Default: INFO.
+log_level: INFO
+
+# At least one printer must be configured and enabled. Repeat this list entry
+# to monitor additional printers.
+printers:
+  - # Human-readable label used in logs, captions, and commands. If omitted,
+    # the implementation identifier (the Bambu serial) is displayed.
+    name: Office P1S
+
+    # Optional implementation-neutral identifier. If omitted for Bambu, the
+    # serial is used. /snapshot accepts name, exact ID, or an ID prefix.
+    id: office-printer
+
+    # Currently supported printer type. Default: bambu.
+    type: bambu
+
+    # Disabled entries are not connected. At least one must be enabled.
+    # Default: true.
+    enabled: true
+
+    # Maximum pending milestone/manual-snapshot events. Minimum 1; default 16.
+    event_queue_size: 16
+
+    # Camera-capture plus message-delivery attempts. Minimum 1; default 3.
+    delivery_attempts: 3
+
+    # Initial retry delay in seconds. Backoff is exponential: 5s, 10s, 20s...
+    # Default: 5.
+    delivery_retry_seconds: 5
+
+    # Settings owned by the Bambu implementation.
+    bambu:
+      # Supported: p1, p1s. Default: p1s.
+      # p2s, x1, and x1c are rejected until dedicated implementations exist.
+      model: p1s
+
+      # Printer LAN address/hostname, serial, and LAN access code are required.
+      host: 192.168.192.50
+      serial: "01P00A123456789"
+      access_code: "12345678" # Secret: obtain from the printer LAN settings.
+
+      # Camera TCP/TLS and frame-read timeout in seconds. Default: 10.
+      camera_timeout_seconds: 10
+
+      # Valid buffered JPEG frames discarded before using the next frame.
+      # Set 0 for the first frame. Must not be negative; default 2.
+      camera_warmup_frames: 2
+
+      # MQTT automatic-reconnect delay bounds in seconds. Defaults: 2 and 60.
+      mqtt_reconnect_min_seconds: 2
+      mqtt_reconnect_max_seconds: 60
+
+    # Each omitted notification key defaults to true.
+    notifications:
+      # New job in PREPARE/RUNNING after the initial startup baseline.
+      started: true
+      # First active report with layer_num >= 2.
+      layer1: true
+      # First active report with progress >= 50%.
+      progress50: true
+      # Progress crossing from below 99% to 99% or above.
+      finished: true
+      # Transition into PAUSE; resume permits a later pause notification.
+      pause: true
+      # FAILED state, covering failures and user-aborted prints.
+      failed: true
+
+# Notification implementation. Currently supported: telegram. Default: telegram.
+messaging:
+  provider: telegram
+
+  # Provider settings live below messaging.<provider>.
+  telegram:
+    # Token issued by @BotFather. Required and secret.
+    bot_token: "1234567890:AAExampleBotToken"
+
+    # Numeric private-chat/group/channel ID. Required for normal monitoring.
+    # Use --find-telegram-chat-id to discover it. Quote it as a string.
+    chat_id: "123456789"
+
+    # Placeholders: {printer}, {milestone}, {progress}
+    # Default: "🖨️ {printer}: {milestone} ({progress}%)"
+    caption: "🖨️ {printer}: {milestone} ({progress}%)"
+
+    # Send without sound. Default: false.
+    disable_notification: false
+
+    # Restrict forwarding/saving where Telegram supports it. Default: false.
+    protect_content: false
+
+    # HTTP timeout for image/text requests in seconds. Default: 30.
+    timeout_seconds: 30
+
+    # Enable /snapshot and compatible /snapshop command polling. Only chat_id
+    # is authorized. Webhooks cannot coexist with polling. Default: true.
+    commands_enabled: true
+
+    # Telegram getUpdates long-poll duration in seconds. Default: 20.
+    command_poll_timeout_seconds: 20
+
+    # Delay between accepted commands from the same chat. Set 0 to disable.
+    # Default: 10 seconds.
+    command_cooldown_seconds: 10
