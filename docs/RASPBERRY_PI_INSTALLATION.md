@@ -39,11 +39,10 @@ Configure these fields:
 - **Locale:** select the correct timezone and keyboard layout.
 - **Remote Access:** enable SSH. Public-key authentication is recommended;
   password authentication is acceptable for initial setup.
-- **Raspberry Pi Connect:** open this tab and enable **Raspberry Pi Connect**.
+- **Raspberry Pi Connect (optional):** open this tab and enable **Raspberry Pi Connect**.
   Select **Open Raspberry Pi Connect**, sign in with Raspberry Pi ID, create the
   temporary authentication key, and return to Imager so the key is included in
-  the image. Do not skip this step. If the tab is missing, update Raspberry Pi
-  Imager and reselect the current Raspberry Pi OS Lite image before continuing.
+  the image.
 
 Review the customisation summary and confirm that Raspberry Pi Connect is
 enabled. Write the image and wait until Imager verifies it. Eject the card
@@ -106,25 +105,7 @@ Optionally reserve the Pi's address in the router's DHCP settings. A stable
 address makes administration easier, although 3d-printer-monitor itself does not
 listen on a network port.
 
-## 4. Verify Raspberry Pi Connect
-
-Raspberry Pi OS Lite includes Connect Lite on current images. It provides remote
-shell access but no desktop screen sharing. Connect was already enabled and
-linked by Raspberry Pi Imager; do not repeat the interactive sign-in during
-normal installation. Verify it:
-
-```bash
-rpi-connect status
-```
-
-For a headless system, keep the user service running after logout and across
-reboots:
-
-```bash
-loginctl enable-linger
-rpi-connect status
-```
-
+## 4. Verify Raspberry Pi Connect (optional)
 The Pi should then appear at
 [connect.raspberrypi.com](https://connect.raspberrypi.com/). Raspberry Pi
 documents linking, remote-shell behavior, and troubleshooting in the official
