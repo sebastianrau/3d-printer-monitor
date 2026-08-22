@@ -83,7 +83,7 @@ func (p *Poller) getWith(ctx context.Context, v url.Values) ([]update, error) {
 	if e != nil {
 		return nil, e
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	b, _ := io.ReadAll(r.Body)
 	var out struct {
 		OK          bool     `json:"ok"`

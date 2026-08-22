@@ -60,7 +60,7 @@ func TestSendImageUploadsInMemoryJPEG(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read photo: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		got, err := io.ReadAll(file)
 		if err != nil {
 			t.Fatalf("read uploaded photo: %v", err)

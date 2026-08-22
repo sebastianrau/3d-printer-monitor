@@ -46,7 +46,7 @@ func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) error {
 		}
 	}); err != nil {
 		cancelConnection()
-		return fmt.Errorf("Bambu MQTT connection: %w", err)
+		return fmt.Errorf("bambu MQTT connection: %w", err)
 	}
 	select {
 	case <-reportReceived:
@@ -55,7 +55,7 @@ func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) error {
 	case <-connectionCtx.Done():
 		p.Stop()
 		cancelConnection()
-		return fmt.Errorf("Bambu status report: %w", connectionCtx.Err())
+		return fmt.Errorf("bambu status report: %w", connectionCtx.Err())
 	}
 
 	cameraCtx, cancelCamera := context.WithTimeout(ctx, timeout)
@@ -105,12 +105,12 @@ func (p *Printer) CaptureSnapshot(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	c := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
 	if err = c.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(time.Duration(p.Bambu.CameraTimeoutSeconds) * time.Second))
 	auth := make([]byte, 80)
 	binary.LittleEndian.PutUint32(auth[0:4], 0x40)
