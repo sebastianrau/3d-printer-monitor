@@ -5,15 +5,20 @@ CONFIG ?= config.yaml
 CONTAINER_CONFIG ?= /etc/3d-printer-monitor/config.yaml
 HOST_UID ?= $(shell id -u)
 HOST_GID ?= $(shell id -g)
+GO_BUILD_IMAGE ?= golang:1.26-bookworm
+BUILD_DIR ?= build
+TARGET_GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+TARGET_GOARCH ?= $(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
 
 .DEFAULT_GOAL := help
 
-.PHONY: help test build check-docker docker-build docker-start docker-up docker-stop docker-restart docker-recreate docker-logs docker-status
+.PHONY: help test build build-container check-docker docker-build docker-start docker-up docker-stop docker-restart docker-recreate docker-logs docker-status
 
 help:
 	@echo "Available targets:"
 	@echo "  make test              Run Go tests"
 	@echo "  make build             Build the local Go binary"
+	@echo "  make build-container   Build the Go binary in the Go 1.26 Bookworm container"
 	@echo "  make docker-build      Build the Docker image"
 	@echo "  make docker-start      Start a new container"
 	@echo "  make docker-up         Build the image and start a new container"
@@ -29,7 +34,22 @@ test:
 	go test -race ./...
 
 build:
-	go build -o 3d-printer-monitor ./cmd/3d-printer-monitor
+	mkdir -p "$(BUILD_DIR)"
+	go build -o "$(BUILD_DIR)/3d-printer-monitor" ./cmd/3d-printer-monitor
+
+build-container: check-docker
+	mkdir -p "$(BUILD_DIR)"
+	$(DOCKER) run --rm \
+		--user "$(HOST_UID):$(HOST_GID)" \
+		--volume "$(CURDIR):/src" \
+		--workdir /src \
+		--env CGO_ENABLED=0 \
+		--env GOOS="$(TARGET_GOOS)" \
+		--env GOARCH="$(TARGET_GOARCH)" \
+		--env GOCACHE=/src/$(BUILD_DIR)/.cache/go-build \
+		--env GOMODCACHE=/src/$(BUILD_DIR)/.cache/go-mod \
+		"$(GO_BUILD_IMAGE)" \
+		go build -buildvcs=false -trimpath -ldflags="-s -w" -o "$(BUILD_DIR)/3d-printer-monitor" ./cmd/3d-printer-monitor
 
 check-docker:
 	@$(DOCKER) info >/dev/null 2>&1 || { \

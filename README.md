@@ -79,9 +79,19 @@ Do not commit real printer access codes or bot tokens.
 ```bash
 go test ./...
 go vet ./...
-go build ./cmd/3d-printer-monitor
+make build
+make build-container
 docker build -t 3d-printer-monitor:local .
 ```
+
+`make build-container` is the alternative to a local Go installation. It
+compiles the binary with the same `golang:1.26-bookworm` image used by the
+Dockerfile's `FROM golang:1.26-bookworm AS build` stage and writes
+`build/3d-printer-monitor`. The local `make build` target writes to the same
+directory. The container build detects the host operating system and CPU
+architecture so the resulting binary runs on the host rather than inside the
+Linux build container. Override them when cross-compiling, for example with
+`TARGET_GOOS=linux TARGET_GOARCH=arm64`.
 
 The Makefile can build the image and start the container with the local
 `config.yaml` mounted read-only:

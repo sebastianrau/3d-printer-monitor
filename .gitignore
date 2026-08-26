@@ -11,7 +11,7 @@ test-result/*
 !test-result/.gitkeep
 
 # Go build and test artifacts
-/3d-printer-monitor
+/build/
 *.test
 *.out
 coverage.*
