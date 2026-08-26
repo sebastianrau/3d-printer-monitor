@@ -2,14 +2,9 @@
 package p2s
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/url"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
@@ -23,12 +18,14 @@ type Printer struct {
 	Config     config.Printer
 	Bambu      config.BambuPrinter
 	connection *bambu.MQTTConnection
+	camera     bambu.Camera
 }
 
 func New(c config.Printer) *Printer {
 	settings := c.BambuSettings()
 	p := &Printer{Config: c, Bambu: settings}
 	p.connection = bambu.NewMQTTConnection(c, settings, protocol{serial: settings.Serial})
+	p.camera = bambu.NewRTSPCamera(settings)
 	return p
 }
 
@@ -102,50 +99,6 @@ func deepMerge(dst, src map[string]any) {
 	}
 }
 
-// CaptureSnapshot reads one frame from the P2S RTSPS/H.264 camera and converts
-// it to JPEG. ffmpeg is used because the Go standard library has no H.264
-// decoder; the project container image includes it.
 func (p *Printer) CaptureSnapshot(ctx context.Context) ([]byte, error) {
-	cameraCtx, cancel := context.WithTimeout(ctx, time.Duration(p.Bambu.CameraTimeoutSeconds)*time.Second)
-	defer cancel()
-
-	stream := &url.URL{
-		Scheme: "rtsps",
-		User:   url.UserPassword("bblp", p.Bambu.AccessCode),
-		Host:   net.JoinHostPort(p.Bambu.Host, "322"),
-		Path:   "/streaming/live/1",
-	}
-	streamURL := stream.String()
-	cmd := exec.CommandContext(cameraCtx, "ffmpeg",
-		"-hide_banner", "-loglevel", "error",
-		"-rtsp_transport", "tcp", "-i", streamURL,
-		"-vf", cameraWarmupFilter(p.Bambu.WarmupFrames()),
-		"-frames:v", "1", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1",
-	)
-	var image bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &image
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if cameraCtx.Err() != nil {
-			return nil, cameraCtx.Err()
-		}
-		detail := strings.TrimSpace(stderr.String())
-		if detail != "" {
-			redactedStream := *stream
-			redactedStream.User = url.UserPassword("bblp", "REDACTED")
-			detail = strings.ReplaceAll(detail, streamURL, redactedStream.String())
-			return nil, fmt.Errorf("ffmpeg: %w: %s", err, detail)
-		}
-		return nil, fmt.Errorf("ffmpeg: %w", err)
-	}
-	b := image.Bytes()
-	if len(b) < 4 || b[0] != 0xff || b[1] != 0xd8 || b[len(b)-2] != 0xff || b[len(b)-1] != 0xd9 {
-		return nil, fmt.Errorf("camera returned an invalid JPEG frame")
-	}
-	return append([]byte(nil), b...), nil
-}
-
-func cameraWarmupFilter(frames int) string {
-	return fmt.Sprintf("select=gte(n\\,%d)", frames)
+	return p.camera.CaptureSnapshot(ctx)
 }

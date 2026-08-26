@@ -3,6 +3,9 @@ package p2s
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
+	"github.com/sebastianrau/3d-printer-monitor/pkg/printermonitor/bambu"
 )
 
 func TestProtocolMergesDeltaReports(t *testing.T) {
@@ -23,6 +26,13 @@ func TestProtocolMergesDeltaReports(t *testing.T) {
 	}
 }
 
+func TestNewSelectsRTSPCamera(t *testing.T) {
+	p := New(config.Printer{Bambu: &config.BambuPrinter{}})
+	if _, ok := p.camera.(*bambu.RTSPCamera); !ok {
+		t.Fatalf("camera type = %T", p.camera)
+	}
+}
+
 func TestProtocolRequestsFullStatus(t *testing.T) {
 	var request map[string]map[string]any
 	if err := json.Unmarshal(protocol{}.InitialRequest(), &request); err != nil {
@@ -30,14 +40,5 @@ func TestProtocolRequestsFullStatus(t *testing.T) {
 	}
 	if request["pushing"]["command"] != "pushall" || request["pushing"]["version"] != float64(1) {
 		t.Fatalf("initial request = %#v", request)
-	}
-}
-
-func TestCameraWarmupFilter(t *testing.T) {
-	if got := cameraWarmupFilter(2); got != `select=gte(n\,2)` {
-		t.Fatalf("camera filter = %q", got)
-	}
-	if got := cameraWarmupFilter(0); got != `select=gte(n\,0)` {
-		t.Fatalf("zero-warmup camera filter = %q", got)
 	}
 }

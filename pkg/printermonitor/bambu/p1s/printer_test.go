@@ -1,6 +1,11 @@
 package p1s
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
+	"github.com/sebastianrau/3d-printer-monitor/pkg/printermonitor/bambu"
+)
 
 func TestProtocolMergesDeltaReports(t *testing.T) {
 	p := protocol{serial: "ABC"}
@@ -17,5 +22,12 @@ func TestProtocolMergesDeltaReports(t *testing.T) {
 	}
 	if p.ReportTopic() != "device/ABC/report" || p.RequestTopic() != "device/ABC/request" {
 		t.Fatal("unexpected P1S topics")
+	}
+}
+
+func TestNewSelectsMJPEGCamera(t *testing.T) {
+	p := New(config.Printer{Bambu: &config.BambuPrinter{}})
+	if _, ok := p.camera.(*bambu.MJPEGCamera); !ok {
+		t.Fatalf("camera type = %T", p.camera)
 	}
 }

@@ -25,6 +25,8 @@ pkg/
     ├── registry/         # printer key → implementation
     └── bambu/
         ├── mqtt.go       # shared Bambu MQTT/TLS transport
+        ├── camera_mjpeg.go # shared TCP/TLS MJPEG camera transport
+        ├── camera_rtsps.go # shared RTSPS/H.264 camera transport
         ├── p1s/          # direct P1/P1S implementation
         └── p2s/          # P2S MQTT and RTSPS camera implementation
 ```

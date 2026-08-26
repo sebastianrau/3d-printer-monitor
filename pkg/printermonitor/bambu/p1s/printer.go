@@ -2,12 +2,8 @@ package p1s
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"time"
 
 	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
@@ -21,12 +17,14 @@ type Printer struct {
 	Config     config.Printer
 	Bambu      config.BambuPrinter
 	connection *bambu.MQTTConnection
+	camera     bambu.Camera
 }
 
 func New(c config.Printer) *Printer {
 	settings := c.BambuSettings()
 	p := &Printer{Config: c, Bambu: settings}
 	p.connection = bambu.NewMQTTConnection(c, settings, protocol{serial: settings.Serial})
+	p.camera = bambu.NewMJPEGCamera(settings)
 	return p
 }
 
@@ -100,61 +98,5 @@ func deepMerge(dst, src map[string]any) {
 }
 
 func (p *Printer) CaptureSnapshot(ctx context.Context) ([]byte, error) {
-	d := net.Dialer{Timeout: time.Duration(p.Bambu.CameraTimeoutSeconds) * time.Second}
-	raw, err := d.DialContext(ctx, "tcp", net.JoinHostPort(p.Bambu.Host, "6000"))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = raw.Close() }()
-	c := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
-	if err = c.HandshakeContext(ctx); err != nil {
-		return nil, err
-	}
-	defer func() { _ = c.Close() }()
-	_ = c.SetDeadline(time.Now().Add(time.Duration(p.Bambu.CameraTimeoutSeconds) * time.Second))
-	auth := make([]byte, 80)
-	binary.LittleEndian.PutUint32(auth[0:4], 0x40)
-	binary.LittleEndian.PutUint32(auth[4:8], 0x3000)
-	copy(auth[16:20], "bblp")
-	code := []byte(p.Bambu.AccessCode)
-	if len(code) > 31 {
-		code = code[:31]
-	}
-	copy(auth[48:], code)
-	if _, err = io.CopyN(c, bytesReader(auth), int64(len(auth))); err != nil {
-		return nil, err
-	}
-	for valid := 0; ; {
-		header := make([]byte, 16)
-		if _, err = io.ReadFull(c, header); err != nil {
-			return nil, err
-		}
-		n := binary.LittleEndian.Uint32(header[:4])
-		if n == 0 || n > 20*1024*1024 {
-			return nil, fmt.Errorf("invalid camera payload size: %d", n)
-		}
-		frame := make([]byte, n)
-		if _, err = io.ReadFull(c, frame); err != nil {
-			return nil, err
-		}
-		if len(frame) >= 4 && frame[0] == 0xff && frame[1] == 0xd8 && frame[len(frame)-2] == 0xff && frame[len(frame)-1] == 0xd9 {
-			if valid < p.Bambu.WarmupFrames() {
-				valid++
-				continue
-			}
-			return frame, nil
-		}
-	}
-}
-
-type sliceReader struct{ b []byte }
-
-func bytesReader(b []byte) *sliceReader { return &sliceReader{b: b} }
-func (r *sliceReader) Read(p []byte) (int, error) {
-	if len(r.b) == 0 {
-		return 0, io.EOF
-	}
-	n := copy(p, r.b)
-	r.b = r.b[n:]
-	return n, nil
+	return p.camera.CaptureSnapshot(ctx)
 }
