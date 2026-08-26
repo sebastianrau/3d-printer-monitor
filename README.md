@@ -7,9 +7,9 @@ milestones, and sends notifications through a configurable messaging provider.
 It is designed as a small framework: printer communication and messaging
 services are replaceable without changing the monitor or the executable.
 
-Only the Bambu model keys `p1` and `p1s` are currently supported. `p2s`, `x1`,
-and `x1c` are rejected until dedicated implementations have been tested with
-the corresponding hardware.
+The Bambu model keys `p1`, `p1s`, and `p2s` are supported. `x1` and `x1c` are
+rejected until dedicated implementations have been tested with the
+corresponding hardware.
 
 ## Framework structure
 
@@ -25,14 +25,16 @@ pkg/
     ├── registry/         # printer key → implementation
     └── bambu/
         ├── mqtt.go       # shared Bambu MQTT/TLS transport
-        └── p1s/          # direct P1/P1S implementation
+        ├── p1s/          # direct P1/P1S implementation
+        └── p2s/          # P2S MQTT and RTSPS camera implementation
 ```
 
 `printermonitor.Printer` does not know about Bambu or MQTT. Implementations
 provide lifecycle handling, normalized status reports, diagnostics, and
 snapshots. The Bambu layer owns MQTT/TLS, reconnection, and delta-state
 handling; the P1S package provides model-specific topics, report decoding, and
-camera access. A future printer can use HTTP, serial, WebSocket, or another
+camera access. The P2S package uses the same MQTT status flow and captures its
+RTSPS/H.264 camera through `ffmpeg`. A future printer can use HTTP, serial, WebSocket, or another
 transport without changing the monitor or `Printer` interface.
 
 Both extension points follow the same pattern: put the implementation in its
@@ -60,6 +62,10 @@ printers:
       serial: "..."
       access_code: "..."
 ```
+
+For a P2S, set `model: p2s`. P2S camera snapshots require `ffmpeg` on the host;
+it is already installed in the project Docker image. `camera_warmup_frames`
+controls how many decoded frames are discarded before capturing the snapshot.
 
 A non-Bambu driver can own a block such as `octoprint:` or `serial:` without
 placing its fields in the Bambu configuration. Unknown and obsolete YAML fields

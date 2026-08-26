@@ -169,7 +169,7 @@ func (c Config) Validate(requireMessenger, requireTarget bool) error {
 		return fmt.Errorf("at least one printer must be configured")
 	}
 	enabled := 0
-	bambuModels := map[string]bool{"p1": true, "p1s": true}
+	bambuModels := map[string]bool{"p1": true, "p1s": true, "p2s": true}
 	for i, p := range c.Printers {
 		if !p.IsEnabled() {
 			continue

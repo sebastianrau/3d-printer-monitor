@@ -8,6 +8,7 @@ import (
 	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
 	"github.com/sebastianrau/3d-printer-monitor/pkg/printermonitor"
 	"github.com/sebastianrau/3d-printer-monitor/pkg/printermonitor/bambu/p1s"
+	"github.com/sebastianrau/3d-printer-monitor/pkg/printermonitor/bambu/p2s"
 )
 
 type Factory func(config.Printer) (printermonitor.Printer, error)
@@ -23,6 +24,9 @@ func New() *Registry {
 			return p1s.New(c), nil
 		})
 	}
+	r.Register("bambu/p2s", func(c config.Printer) (printermonitor.Printer, error) {
+		return p2s.New(c), nil
+	})
 	return r
 }
 
