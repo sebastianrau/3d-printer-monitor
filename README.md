@@ -145,6 +145,18 @@ Telegram accepts `/snapshot` and the compatibility alias `/snapshop`. Without a
 selector, all printers take a snapshot. A printer name, exact identifier, or
 identifier prefix selects a printer.
 
+For each newly detected print job, Telegram creates one editable status message
+with a 10-segment emoji progress bar. Changed progress details are updated at
+most once every 60 seconds. State transitions such as pause, resume, completion,
+abort, or failure bypass that interval. Completed and aborted jobs receive one
+final update and are then removed from the in-memory update tracker. When Bambu
+MQTT supplies `stg_cur`, known printer operations such as `Heating bed` or
+`Cleaning nozzle tip` are included in the same status message. If the monitor
+starts while a job is already active, it creates a replacement status message
+from the first complete MQTT report and continues updating that message. When
+remaining time is available, the message also shows the estimated completion
+time calculated in the process's local timezone.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

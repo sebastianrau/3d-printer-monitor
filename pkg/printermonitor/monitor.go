@@ -21,25 +21,32 @@ type Event struct {
 	Layer, Total *int
 	Flag         string
 }
+type statusEvent struct {
+	key                 string
+	status              messenger.PrintStatus
+	immediate, terminal bool
+}
 type Monitor struct {
-	Config      config.Printer
-	Printer     Printer
-	Messenger   messenger.Messenger
-	mu          sync.Mutex
-	printState  map[string]any
-	stateMu     sync.Mutex
-	state       map[string]any
-	initialized bool
-	events      chan Event
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	Config       config.Printer
+	Printer      Printer
+	Messenger    messenger.Messenger
+	mu           sync.Mutex
+	printState   map[string]any
+	stateMu      sync.Mutex
+	state        map[string]any
+	initialized  bool
+	events       chan Event
+	statusEvents chan statusEvent
+	progressKey  string
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
 func NewMonitor(c config.Printer, p Printer, m messenger.Messenger) (*Monitor, error) {
 	if p == nil {
 		return nil, fmt.Errorf("printer implementation is required")
 	}
-	return &Monitor{Config: c, Printer: p, Messenger: m, printState: map[string]any{}, state: map[string]any{}, events: make(chan Event, c.EventQueueSize)}, nil
+	return &Monitor{Config: c, Printer: p, Messenger: m, printState: map[string]any{}, state: map[string]any{}, events: make(chan Event, c.EventQueueSize), statusEvents: make(chan statusEvent, c.EventQueueSize)}, nil
 }
 func (r *Monitor) Name() string       { return r.Config.DisplayName() }
 func (r *Monitor) Identifier() string { return r.Config.Identifier() }
@@ -96,6 +103,20 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		}
 		r.updateState(baseline)
 		r.initialized = true
+		if oneOf(gstate, "PREPARE", "RUNNING", "PAUSE") {
+			r.progressKey = r.Identifier() + ":" + task
+			r.enqueueStatus(statusEvent{
+				key: r.progressKey,
+				status: messenger.PrintStatus{
+					Printer: r.Name(), Job: firstString(p, "subtask_name", "gcode_file", "task_id", "subtask_id"), State: gstate, Stage: firstString(p, "stage_name", "stage"),
+					Progress: progress, Layer: layer, TotalLayers: total,
+					RemainingMinutes:  asInt(firstValue(p, "mc_remaining_time", "remaining_time")),
+					NozzleTemperature: asFloat(firstValue(p, "nozzle_temper", "nozzle_temperature")),
+					BedTemperature:    asFloat(firstValue(p, "bed_temper", "bed_temperature")),
+				},
+				immediate: true,
+			})
+		}
 		return nil
 	}
 	persisted := r.currentState()
@@ -106,6 +127,7 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 	if newJob {
 		r.updateState(map[string]any{"task_id": task, "started_sent": false, "layer1_sent": false, "progress50_sent": false, "finished_sent": false, "pause_sent": false, "failed_sent": false, "last_progress": value(progress), "last_gcode_state": ""})
 		persisted = r.currentState()
+		r.progressKey = r.Identifier() + ":" + task
 	}
 	if task != "" && asString(persisted["task_id"]) != task {
 		r.updateState(map[string]any{"task_id": task})
@@ -114,6 +136,40 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		r.updateState(map[string]any{"last_progress": *progress})
 	}
 	previousState := strings.ToUpper(asString(persisted["last_gcode_state"]))
+	if r.progressKey != "" {
+		statusState := gstate
+		statusProgress, statusLayer, statusTotal := progress, layer, total
+		statusRemaining := asInt(firstValue(p, "mc_remaining_time", "remaining_time"))
+		if newJob {
+			statusState = "STARTED"
+			// Bambu can announce the new task before replacing the previous
+			// task's final progress, layer, and remaining-time values.
+			zero := 0
+			statusProgress, statusLayer, statusTotal, statusRemaining = &zero, nil, nil, nil
+		} else if gstate == "FAILED" {
+			if code := asString(firstValue(p, "print_error", "error_code")); code != "" && code != "0" {
+				statusState = "ERROR"
+			} else {
+				statusState = "ABORTED"
+			}
+		}
+		terminal := oneOf(statusState, "FINISH", "FAILED", "ABORTED", "ERROR")
+		r.enqueueStatus(statusEvent{
+			key: r.progressKey,
+			status: messenger.PrintStatus{
+				Printer: r.Name(), Job: firstString(p, "subtask_name", "gcode_file", "task_id", "subtask_id"), State: statusState, Stage: firstString(p, "stage_name", "stage"),
+				Progress: statusProgress, Layer: statusLayer, TotalLayers: statusTotal,
+				RemainingMinutes:  statusRemaining,
+				NozzleTemperature: asFloat(firstValue(p, "nozzle_temper", "nozzle_temperature")),
+				BedTemperature:    asFloat(firstValue(p, "bed_temper", "bed_temperature")),
+			},
+			immediate: newJob || gstate != previousState,
+			terminal:  terminal,
+		})
+		if terminal {
+			r.progressKey = ""
+		}
+	}
 	if previousState == "" && oneOf(gstate, "IDLE", "FINISH", "FAILED", "PAUSE") {
 		v := map[string]any{"last_gcode_state": gstate}
 		if gstate == "FINISH" {
@@ -188,7 +244,42 @@ func (r *Monitor) worker(ctx context.Context) {
 			return
 		case e := <-r.events:
 			r.deliver(ctx, e)
+		case e := <-r.statusEvents:
+			r.deliverStatus(ctx, e)
 		}
+	}
+}
+
+func (r *Monitor) deliverStatus(ctx context.Context, event statusEvent) {
+	progress, ok := r.Messenger.(messenger.ProgressMessenger)
+	if !ok {
+		return
+	}
+	for attempt := 1; attempt <= r.Config.DeliveryAttempts; attempt++ {
+		if err := progress.PublishPrintStatus(ctx, event.key, event.status, event.immediate, event.terminal); err == nil {
+			return
+		} else {
+			log.Errorf("[%s] progress status delivery failed (attempt %d/%d): %v", r.Name(), attempt, r.Config.DeliveryAttempts, err)
+		}
+		if attempt < r.Config.DeliveryAttempts {
+			delay := time.Duration(r.Config.DeliveryRetrySeconds*float64(time.Second)) * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+		}
+	}
+}
+
+func (r *Monitor) enqueueStatus(event statusEvent) {
+	if _, ok := r.Messenger.(messenger.ProgressMessenger); !ok {
+		return
+	}
+	select {
+	case r.statusEvents <- event:
+	default:
+		log.Warnf("[%s] progress update queue full", r.Name())
 	}
 }
 func (r *Monitor) deliver(ctx context.Context, e Event) {
@@ -267,6 +358,32 @@ func firstString(m map[string]any, ks ...string) string {
 		}
 	}
 	return ""
+}
+func firstValue(m map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if m[key] != nil {
+			return m[key]
+		}
+	}
+	return nil
+}
+func asFloat(v any) *float64 {
+	switch n := v.(type) {
+	case float64:
+		return &n
+	case float32:
+		value := float64(n)
+		return &value
+	case int:
+		value := float64(n)
+		return &value
+	case string:
+		value, err := strconv.ParseFloat(n, 64)
+		if err == nil {
+			return &value
+		}
+	}
+	return nil
 }
 func cloneMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sebastianrau/3d-printer-monitor/pkg/config"
@@ -23,15 +24,20 @@ var log = logger.WithPackage("telegram")
 var _ messenger.Messenger = (*Telegram)(nil)
 var _ messenger.Service = (*Telegram)(nil)
 var _ messenger.TargetDiscoverer = (*Telegram)(nil)
+var _ messenger.ProgressMessenger = (*Telegram)(nil)
 
 type Telegram struct {
-	Config  config.TelegramConfig
-	BaseURL string
-	HTTP    *http.Client
+	Config   config.TelegramConfig
+	BaseURL  string
+	HTTP     *http.Client
+	statusMu sync.Mutex
+	statuses map[string]statusMessage
+	now      func() time.Time
+	wait     func(context.Context, time.Duration) error
 }
 
 func New(c config.TelegramConfig) *Telegram {
-	return &Telegram{Config: c, BaseURL: "https://api.telegram.org/bot" + c.BotToken, HTTP: &http.Client{Timeout: time.Duration(c.TimeoutSeconds) * time.Second}}
+	return &Telegram{Config: c, BaseURL: "https://api.telegram.org/bot" + c.BotToken, HTTP: &http.Client{Timeout: time.Duration(c.TimeoutSeconds) * time.Second}, statuses: map[string]statusMessage{}, now: time.Now, wait: waitContext}
 }
 
 func (t *Telegram) Validate() error {
@@ -83,26 +89,65 @@ func (t *Telegram) SendText(ctx context.Context, chatID, text string) error {
 }
 
 func (t *Telegram) do(req *http.Request) error {
-	r, err := t.HTTP.Do(req)
-	if err != nil {
-		return err
+	return t.doInto(req, nil)
+}
+
+func (t *Telegram) doInto(req *http.Request, target any) error {
+	for {
+		r, err := t.HTTP.Do(req)
+		if err != nil {
+			return err
+		}
+		b, readErr := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if readErr != nil {
+			return readErr
+		}
+		var result struct {
+			OK          bool            `json:"ok"`
+			Description string          `json:"description"`
+			Result      json.RawMessage `json:"result"`
+			Parameters  struct {
+				RetryAfter int `json:"retry_after"`
+			} `json:"parameters"`
+		}
+		if err := json.Unmarshal(b, &result); err != nil {
+			return err
+		}
+		if r.StatusCode == http.StatusTooManyRequests && result.Parameters.RetryAfter > 0 {
+			if err := t.wait(req.Context(), time.Duration(result.Parameters.RetryAfter)*time.Second); err != nil {
+				return err
+			}
+			if req.GetBody == nil {
+				return fmt.Errorf("telegram API: status=429 request cannot be retried")
+			}
+			req.Body, err = req.GetBody()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if r.StatusCode >= 300 || !result.OK {
+			return fmt.Errorf("telegram API: status=%d %s", r.StatusCode, result.Description)
+		}
+		if target != nil && len(result.Result) > 0 {
+			if err := json.Unmarshal(result.Result, target); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	defer func() { _ = r.Body.Close() }()
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		return err
+}
+
+func waitContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
-	var result struct {
-		OK          bool   `json:"ok"`
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal(b, &result); err != nil {
-		return err
-	}
-	if r.StatusCode >= 300 || !result.OK {
-		return fmt.Errorf("telegram API: status=%d %s", r.StatusCode, result.Description)
-	}
-	return nil
 }
 
 func (t *Telegram) FindChatIDs(ctx context.Context, wait time.Duration, includeOld bool) (bool, error) {

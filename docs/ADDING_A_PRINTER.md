@@ -42,6 +42,11 @@ Each report is `map[string]any`. The monitor recognizes these keys:
 | `subtask_id` | string | Fallback job identity |
 | `gcode_file` | string | Fallback job identity |
 | `subtask_name` | string | Final fallback job identity |
+| `mc_remaining_time` | number | Remaining print time in minutes |
+| `nozzle_temper` | number | Current nozzle temperature in degrees Celsius |
+| `bed_temper` | number | Current bed temperature in degrees Celsius |
+| `print_error` | string/number | Non-zero printer error code used to distinguish errors from aborts |
+| `stage_name` | string | Optional human-readable current printer operation |
 
 At least one of `gcode_state`, `mc_percent`, or `layer_num` must be present for a
 report to affect monitoring. Supply a stable job identity whenever possible so

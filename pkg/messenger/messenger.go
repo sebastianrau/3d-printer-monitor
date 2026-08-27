@@ -10,6 +10,21 @@ type Messenger interface {
 	SendText(context.Context, string, string) error
 }
 
+// PrintStatus contains implementation-neutral fields for one print-job update.
+type PrintStatus struct {
+	Printer, Job, State, Stage string
+	Progress                   *int
+	Layer, TotalLayers         *int
+	RemainingMinutes           *int
+	NozzleTemperature          *float64
+	BedTemperature             *float64
+}
+
+// ProgressMessenger is an optional capability for editable print-status messages.
+type ProgressMessenger interface {
+	PublishPrintStatus(context.Context, string, PrintStatus, bool, bool) error
+}
+
 // SnapshotSource is the provider-neutral view used by messenger commands.
 type SnapshotSource interface {
 	Name() string
