@@ -60,7 +60,7 @@ check-docker:
 		exit 1; \
 	}
 
-docker-build: check-docker
+docker-build: build-container
 	$(DOCKER) build --tag "$(IMAGE)" .
 
 docker-start: check-docker check-config

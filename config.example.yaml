@@ -82,9 +82,9 @@ printers:
 
     bambu:
       model: p2s
-      host: 192.168.192.51
-      serial: "01P20A123456789"
-      access_code: "87654321" # Secret: obtain from the printer LAN settings.
+      host: IP_ADDRESS_OF_P2S
+      serial: "SERIAL_OF_P2S"
+      access_code: "ACCESS_CODE_OF_P2S" # Secret: obtain from the printer LAN settings.
 
       # P2S snapshots use the RTSPS/H.264 camera through ffmpeg.
       camera_timeout_seconds: 10

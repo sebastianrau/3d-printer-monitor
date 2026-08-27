@@ -101,6 +101,9 @@ architecture so the resulting binary runs on the host rather than inside the
 Linux build container. Override them when cross-compiling, for example with
 `TARGET_GOOS=linux TARGET_GOARCH=arm64`.
 
+`make docker-build` runs `make build-container` first, so it also creates the
+host binary in `build/` before building the Docker image.
+
 The Makefile can build the image and start the container with the local
 `config.yaml` mounted read-only:
 
