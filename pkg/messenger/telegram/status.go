@@ -14,6 +14,7 @@ import (
 )
 
 const statusUpdateInterval = 60 * time.Second
+const progressBarSegments = 10
 
 type statusMessage struct {
 	messageID int64
@@ -82,8 +83,8 @@ func (t *Telegram) editStatus(ctx context.Context, messageID int64, text string)
 
 func progressBar(progress int) string {
 	progress = max(0, min(100, progress))
-	complete := int(math.Floor(float64(progress) * 20 / 100))
-	return strings.Repeat("🟩", complete) + strings.Repeat("⬜", 20-complete)
+	complete := int(math.Floor(float64(progress) * progressBarSegments / 100))
+	return strings.Repeat("🟩", complete) + strings.Repeat("⬜", progressBarSegments-complete)
 }
 
 func formatPrintStatus(s messenger.PrintStatus, now time.Time) string {

@@ -12,9 +12,9 @@ import (
 	"github.com/sebastianrau/3d-printer-monitor/pkg/messenger"
 )
 
-func TestProgressBarHasTwentySegments(t *testing.T) {
+func TestProgressBarHasTenSegments(t *testing.T) {
 	got := progressBar(57)
-	if strings.Count(got, "🟩") != 11 || strings.Count(got, "⬜") != 9 {
+	if strings.Count(got, "🟩") != 5 || strings.Count(got, "⬜") != 5 {
 		t.Fatalf("progressBar(57) = %q", got)
 	}
 }

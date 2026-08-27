@@ -146,7 +146,7 @@ selector, all printers take a snapshot. A printer name, exact identifier, or
 identifier prefix selects a printer.
 
 For each newly detected print job, Telegram creates one editable status message
-with a 20-segment emoji progress bar. Changed progress details are updated at
+with a 10-segment emoji progress bar. Changed progress details are updated at
 most once every 60 seconds. State transitions such as pause, resume, completion,
 abort, or failure bypass that interval. Completed and aborted jobs receive one
 final update and are then removed from the in-memory update tracker. When Bambu
