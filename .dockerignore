@@ -2,4 +2,8 @@
 .idea
 .vscode
 3d-printer-monitor
+build
+config.yaml
+config.*.yaml
+!config.example.yaml
 *.log

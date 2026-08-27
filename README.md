@@ -112,6 +112,17 @@ make docker-up
 make docker-logs
 ```
 
+The same setup is available through Docker Compose. Set the numeric user and
+group IDs so an owner-only `config.yaml` remains readable inside the container:
+
+```bash
+HOST_UID="$(id -u)" HOST_GID="$(id -g)" docker compose up --build -d
+docker compose logs -f
+```
+
+Override the image, container, or configuration path with the `IMAGE`,
+`CONTAINER`, and `CONFIG` environment variables.
+
 A running Docker-compatible engine is required. On macOS, install and start
 Docker Desktop, Colima, OrbStack, or another container runtime. Verify it before
 building with `docker info`. The optional Docker Buildx plugin removes Docker's
