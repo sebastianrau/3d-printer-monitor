@@ -34,7 +34,10 @@ func (c *RTSPCamera) CaptureSnapshot(ctx context.Context) ([]byte, error) {
 	streamURL := stream.String()
 	cmd := exec.CommandContext(cameraCtx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
-		"-rtsp_transport", "tcp", "-i", streamURL,
+		"-rtsp_transport", "tcp",
+		// Bambu printers use a device certificate that is not rooted in the
+		// host CA store. Keep RTSPS encryption, but do not reject that peer.
+		"-tls_verify", "0", "-i", streamURL,
 		"-vf", cameraWarmupFilter(c.settings.WarmupFrames()),
 		"-frames:v", "1", "-f", "image2pipe", "-c:v", "mjpeg", "pipe:1",
 	)
