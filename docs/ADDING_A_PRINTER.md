@@ -27,7 +27,8 @@ The methods have these exact responsibilities:
 - `CaptureSnapshot` returns complete JPEG bytes in memory. It must honor context
   cancellation and must not persist the image.
 - `Diagnose` verifies both status communication and snapshot capture within the
-  supplied timeout. Transport-specific checks belong here.
+  supplied timeout and returns the captured JPEG for the diagnostic command to
+  store. Transport-specific checks belong here.
 
 Each report is `map[string]any`. The monitor recognizes these keys:
 

@@ -35,7 +35,7 @@ func (p *Printer) Start(ctx context.Context, handler printermonitor.ReportHandle
 
 func (p *Printer) Stop() { p.connection.Stop() }
 
-func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) error {
+func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) ([]byte, error) {
 	reportReceived := make(chan struct{}, 1)
 	connectionCtx, cancelConnection := context.WithTimeout(ctx, timeout)
 	if err := p.Start(connectionCtx, func(map[string]any) {
@@ -45,7 +45,7 @@ func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) error {
 		}
 	}); err != nil {
 		cancelConnection()
-		return fmt.Errorf("bambu MQTT connection: %w", err)
+		return nil, fmt.Errorf("bambu MQTT connection: %w", err)
 	}
 	select {
 	case <-reportReceived:
@@ -54,15 +54,16 @@ func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) error {
 	case <-connectionCtx.Done():
 		p.Stop()
 		cancelConnection()
-		return fmt.Errorf("bambu status report: %w", connectionCtx.Err())
+		return nil, fmt.Errorf("bambu status report: %w", connectionCtx.Err())
 	}
 
 	cameraCtx, cancelCamera := context.WithTimeout(ctx, timeout)
 	defer cancelCamera()
-	if _, err := p.CaptureSnapshot(cameraCtx); err != nil {
-		return fmt.Errorf("P2S camera: %w", err)
+	image, err := p.CaptureSnapshot(cameraCtx)
+	if err != nil {
+		return nil, fmt.Errorf("P2S camera: %w", err)
 	}
-	return nil
+	return image, nil
 }
 
 type protocol struct{ serial string }

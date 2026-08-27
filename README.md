@@ -131,8 +131,10 @@ Test a configured printer or discover a Telegram chat ID:
 3d-printer-monitor --config config.yaml --find-telegram-chat-id --telegram-wait 30
 ```
 
-Camera images are held only in memory and passed directly to the messenger. No
-image files are written to the device.
+The printer diagnostic stores its captured image in the current directory as
+`<printer-name>-diagnostic.jpg`. During normal monitoring, camera images are held
+only in memory and passed directly to the messenger; no image files are written
+to the device.
 
 Milestone and duplicate-suppression state also remains in memory. On startup,
 the first printer report becomes the baseline so an already running print does
