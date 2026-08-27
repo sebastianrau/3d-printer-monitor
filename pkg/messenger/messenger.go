@@ -12,12 +12,12 @@ type Messenger interface {
 
 // PrintStatus contains implementation-neutral fields for one print-job update.
 type PrintStatus struct {
-	Printer, Job, State string
-	Progress            *int
-	Layer, TotalLayers  *int
-	RemainingMinutes    *int
-	NozzleTemperature   *float64
-	BedTemperature      *float64
+	Printer, Job, State, Stage string
+	Progress                   *int
+	Layer, TotalLayers         *int
+	RemainingMinutes           *int
+	NozzleTemperature          *float64
+	BedTemperature             *float64
 }
 
 // ProgressMessenger is an optional capability for editable print-status messages.

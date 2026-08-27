@@ -24,7 +24,8 @@ type statusMessage struct {
 func (t *Telegram) PublishPrintStatus(ctx context.Context, key string, status messenger.PrintStatus, immediate, terminal bool) error {
 	t.statusMu.Lock()
 	defer t.statusMu.Unlock()
-	text := formatPrintStatus(status)
+	now := t.now()
+	text := formatPrintStatus(status, now)
 	previous, exists := t.statuses[key]
 	if exists && text == previous.text {
 		if terminal {
@@ -32,7 +33,7 @@ func (t *Telegram) PublishPrintStatus(ctx context.Context, key string, status me
 		}
 		return nil
 	}
-	if exists && !immediate && t.now().Sub(previous.updatedAt) < statusUpdateInterval {
+	if exists && !immediate && now.Sub(previous.updatedAt) < statusUpdateInterval {
 		return nil
 	}
 	if !exists {
@@ -40,12 +41,12 @@ func (t *Telegram) PublishPrintStatus(ctx context.Context, key string, status me
 		if err != nil {
 			return err
 		}
-		t.statuses[key] = statusMessage{messageID: id, text: text, updatedAt: t.now()}
+		t.statuses[key] = statusMessage{messageID: id, text: text, updatedAt: now}
 	} else {
 		if err := t.editStatus(ctx, previous.messageID, text); err != nil {
 			return err
 		}
-		t.statuses[key] = statusMessage{messageID: previous.messageID, text: text, updatedAt: t.now()}
+		t.statuses[key] = statusMessage{messageID: previous.messageID, text: text, updatedAt: now}
 	}
 	if terminal {
 		delete(t.statuses, key)
@@ -85,7 +86,7 @@ func progressBar(progress int) string {
 	return strings.Repeat("🟩", complete) + strings.Repeat("⬜", 20-complete)
 }
 
-func formatPrintStatus(s messenger.PrintStatus) string {
+func formatPrintStatus(s messenger.PrintStatus, now time.Time) string {
 	progress := 0
 	if s.Progress != nil {
 		progress = *s.Progress
@@ -95,6 +96,9 @@ func formatPrintStatus(s messenger.PrintStatus) string {
 		job = "Druckauftrag"
 	}
 	lines := []string{fmt.Sprintf("🖨️ %s – %s", s.Printer, job), fmt.Sprintf("%s %d %%", progressBar(progress), progress), "", fmt.Sprintf("%s Status: %s", statusEmoji(s.State), statusLabel(s.State))}
+	if s.Stage != "" {
+		lines = append(lines, "🛠️ Vorgang: "+s.Stage)
+	}
 	if s.Layer != nil {
 		layer := fmt.Sprintf("📚 Layer: %d", *s.Layer)
 		if s.TotalLayers != nil {
@@ -104,6 +108,8 @@ func formatPrintStatus(s messenger.PrintStatus) string {
 	}
 	if s.RemainingMinutes != nil {
 		lines = append(lines, "⏳ Restzeit: "+formatMinutes(*s.RemainingMinutes))
+		finishedAt := now.Add(time.Duration(*s.RemainingMinutes) * time.Minute)
+		lines = append(lines, "🏁 Fertig um: "+finishedAt.Format("15:04")+" Uhr")
 	}
 	if s.NozzleTemperature != nil {
 		lines = append(lines, fmt.Sprintf("🔥 Düse: %.0f °C", *s.NozzleTemperature))

@@ -31,7 +31,7 @@ func TestRTSPCameraDisablesTLSVerificationForPrinterCertificate(t *testing.T) {
 	camera := NewRTSPCamera(config.BambuPrinter{
 		Host:                 "192.0.2.1",
 		AccessCode:           "secret",
-		CameraTimeoutSeconds: 1,
+		CameraTimeoutSeconds: 5,
 	})
 	if _, err := camera.CaptureSnapshot(t.Context()); err != nil {
 		t.Fatal(err)

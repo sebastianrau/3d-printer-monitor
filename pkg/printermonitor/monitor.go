@@ -103,6 +103,20 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		}
 		r.updateState(baseline)
 		r.initialized = true
+		if oneOf(gstate, "PREPARE", "RUNNING", "PAUSE") {
+			r.progressKey = r.Identifier() + ":" + task
+			r.enqueueStatus(statusEvent{
+				key: r.progressKey,
+				status: messenger.PrintStatus{
+					Printer: r.Name(), Job: firstString(p, "subtask_name", "gcode_file", "task_id", "subtask_id"), State: gstate, Stage: firstString(p, "stage_name", "stage"),
+					Progress: progress, Layer: layer, TotalLayers: total,
+					RemainingMinutes:  asInt(firstValue(p, "mc_remaining_time", "remaining_time")),
+					NozzleTemperature: asFloat(firstValue(p, "nozzle_temper", "nozzle_temperature")),
+					BedTemperature:    asFloat(firstValue(p, "bed_temper", "bed_temperature")),
+				},
+				immediate: true,
+			})
+		}
 		return nil
 	}
 	persisted := r.currentState()
@@ -124,8 +138,14 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 	previousState := strings.ToUpper(asString(persisted["last_gcode_state"]))
 	if r.progressKey != "" {
 		statusState := gstate
+		statusProgress, statusLayer, statusTotal := progress, layer, total
+		statusRemaining := asInt(firstValue(p, "mc_remaining_time", "remaining_time"))
 		if newJob {
 			statusState = "STARTED"
+			// Bambu can announce the new task before replacing the previous
+			// task's final progress, layer, and remaining-time values.
+			zero := 0
+			statusProgress, statusLayer, statusTotal, statusRemaining = &zero, nil, nil, nil
 		} else if gstate == "FAILED" {
 			if code := asString(firstValue(p, "print_error", "error_code")); code != "" && code != "0" {
 				statusState = "ERROR"
@@ -137,9 +157,9 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		r.enqueueStatus(statusEvent{
 			key: r.progressKey,
 			status: messenger.PrintStatus{
-				Printer: r.Name(), Job: firstString(p, "subtask_name", "gcode_file", "task_id", "subtask_id"), State: statusState,
-				Progress: progress, Layer: layer, TotalLayers: total,
-				RemainingMinutes:  asInt(firstValue(p, "mc_remaining_time", "remaining_time")),
+				Printer: r.Name(), Job: firstString(p, "subtask_name", "gcode_file", "task_id", "subtask_id"), State: statusState, Stage: firstString(p, "stage_name", "stage"),
+				Progress: statusProgress, Layer: statusLayer, TotalLayers: statusTotal,
+				RemainingMinutes:  statusRemaining,
 				NozzleTemperature: asFloat(firstValue(p, "nozzle_temper", "nozzle_temperature")),
 				BedTemperature:    asFloat(firstValue(p, "bed_temper", "bed_temperature")),
 			},

@@ -22,8 +22,9 @@ func TestProgressBarHasTwentySegments(t *testing.T) {
 func TestFormatPrintStatusIncludesAvailableDetails(t *testing.T) {
 	progress, layer, total, remaining := 57, 144, 252, 74
 	nozzle, bed := 260.0, 100.0
-	text := formatPrintStatus(messenger.PrintStatus{Printer: "P1S", Job: "Gehäusedeckel", State: "RUNNING", Progress: &progress, Layer: &layer, TotalLayers: &total, RemainingMinutes: &remaining, NozzleTemperature: &nozzle, BedTemperature: &bed})
-	for _, want := range []string{"🖨️ P1S – Gehäusedeckel", "57 %", "🔄 Status: Drucken", "📚 Layer: 144 / 252", "⏳ Restzeit: 1 h 14 min", "🔥 Düse: 260 °C", "🌡️ Bett: 100 °C"} {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.Local)
+	text := formatPrintStatus(messenger.PrintStatus{Printer: "P1S", Job: "Gehäusedeckel", State: "RUNNING", Stage: "Cleaning nozzle tip", Progress: &progress, Layer: &layer, TotalLayers: &total, RemainingMinutes: &remaining, NozzleTemperature: &nozzle, BedTemperature: &bed}, now)
+	for _, want := range []string{"🖨️ P1S – Gehäusedeckel", "57 %", "🔄 Status: Drucken", "🛠️ Vorgang: Cleaning nozzle tip", "📚 Layer: 144 / 252", "⏳ Restzeit: 1 h 14 min", "🏁 Fertig um: 13:14 Uhr", "🔥 Düse: 260 °C", "🌡️ Bett: 100 °C"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("status missing %q:\n%s", want, text)
 		}

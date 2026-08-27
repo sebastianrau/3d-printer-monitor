@@ -81,6 +81,11 @@ func (p protocol) DecodeReport(payload []byte, accumulated map[string]any) (map[
 	}
 	deepMerge(accumulated, report)
 	v, _ := accumulated["print"].(map[string]any)
+	if stage := bambu.StageName(v["stg_cur"]); stage != "" {
+		v["stage_name"] = stage
+	} else {
+		delete(v, "stage_name")
+	}
 	return v, nil
 }
 
