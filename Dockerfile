@@ -1,7 +1,11 @@
 FROM golang:1.26-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN for attempt in 1 2 3; do \
+        go mod download && break; \
+        if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+        sleep $((attempt * 5)); \
+    done
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/3d-printer-monitor ./cmd/3d-printer-monitor
 
