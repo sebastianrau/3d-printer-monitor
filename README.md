@@ -7,9 +7,9 @@ milestones, and sends notifications through a configurable messaging provider.
 It is designed as a small framework: printer communication and messaging
 services are replaceable without changing the monitor or the executable.
 
-Only the Bambu model keys `p1` and `p1s` are currently supported. `p2s`, `x1`,
-and `x1c` are rejected until dedicated implementations have been tested with
-the corresponding hardware.
+The Bambu model keys `p1`, `p1s`, and `p2s` are supported. `x1` and `x1c` are
+rejected until dedicated implementations have been tested with the
+corresponding hardware.
 
 ## Framework structure
 
@@ -25,14 +25,18 @@ pkg/
     ├── registry/         # printer key → implementation
     └── bambu/
         ├── mqtt.go       # shared Bambu MQTT/TLS transport
-        └── p1s/          # direct P1/P1S implementation
+        ├── camera_mjpeg.go # shared TCP/TLS MJPEG camera transport
+        ├── camera_rtsps.go # shared RTSPS/H.264 camera transport
+        ├── p1s/          # direct P1/P1S implementation
+        └── p2s/          # P2S MQTT and RTSPS camera implementation
 ```
 
 `printermonitor.Printer` does not know about Bambu or MQTT. Implementations
 provide lifecycle handling, normalized status reports, diagnostics, and
 snapshots. The Bambu layer owns MQTT/TLS, reconnection, and delta-state
 handling; the P1S package provides model-specific topics, report decoding, and
-camera access. A future printer can use HTTP, serial, WebSocket, or another
+camera access. The P2S package uses the same MQTT status flow and captures its
+RTSPS/H.264 camera through `ffmpeg`. A future printer can use HTTP, serial, WebSocket, or another
 transport without changing the monitor or `Printer` interface.
 
 Both extension points follow the same pattern: put the implementation in its
@@ -61,6 +65,10 @@ printers:
       access_code: "..."
 ```
 
+For a P2S, set `model: p2s`. P2S camera snapshots require `ffmpeg` on the host;
+it is already installed in the project Docker image. `camera_warmup_frames`
+controls how many decoded frames are discarded before capturing the snapshot.
+
 A non-Bambu driver can own a block such as `octoprint:` or `serial:` without
 placing its fields in the Bambu configuration. Unknown and obsolete YAML fields
 are rejected during startup.
@@ -79,9 +87,22 @@ Do not commit real printer access codes or bot tokens.
 ```bash
 go test ./...
 go vet ./...
-go build ./cmd/3d-printer-monitor
+make build
+make build-container
 docker build -t 3d-printer-monitor:local .
 ```
+
+`make build-container` is the alternative to a local Go installation. It
+compiles the binary with the same `golang:1.26-bookworm` image used by the
+Dockerfile's `FROM golang:1.26-bookworm AS build` stage and writes
+`build/3d-printer-monitor`. The local `make build` target writes to the same
+directory. The container build detects the host operating system and CPU
+architecture so the resulting binary runs on the host rather than inside the
+Linux build container. Override them when cross-compiling, for example with
+`TARGET_GOOS=linux TARGET_GOARCH=arm64`.
+
+`make docker-build` runs `make build-container` first, so it also creates the
+host binary in `build/` before building the Docker image.
 
 The Makefile can build the image and start the container with the local
 `config.yaml` mounted read-only:
@@ -110,8 +131,10 @@ Test a configured printer or discover a Telegram chat ID:
 3d-printer-monitor --config config.yaml --find-telegram-chat-id --telegram-wait 30
 ```
 
-Camera images are held only in memory and passed directly to the messenger. No
-image files are written to the device.
+The printer diagnostic stores its captured image in the current directory as
+`<printer-name>-diagnostic.jpg`. During normal monitoring, camera images are held
+only in memory and passed directly to the messenger; no image files are written
+to the device.
 
 Milestone and duplicate-suppression state also remains in memory. On startup,
 the first printer report becomes the baseline so an already running print does

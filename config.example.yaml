@@ -36,8 +36,9 @@ printers:
 
     # Settings owned by the Bambu implementation.
     bambu:
-      # Supported: p1, p1s. Default: p1s.
-      # p2s, x1, and x1c are rejected until dedicated implementations exist.
+      # Supported: p1, p1s, p2s. Default: p1s.
+      # P2S snapshots require ffmpeg (included in the project Docker image).
+      # x1 and x1c are rejected until dedicated implementations exist.
       model: p1s
 
       # Printer LAN address/hostname, serial, and LAN access code are required.
@@ -69,6 +70,34 @@ printers:
       # Transition into PAUSE; resume permits a later pause notification.
       pause: true
       # FAILED state, covering failures and user-aborted prints.
+      failed: true
+
+  - name: Workshop P2S
+    id: workshop-printer
+    type: bambu
+    enabled: true
+    event_queue_size: 16
+    delivery_attempts: 3
+    delivery_retry_seconds: 5
+
+    bambu:
+      model: p2s
+      host: IP_ADDRESS_OF_P2S
+      serial: "SERIAL_OF_P2S"
+      access_code: "ACCESS_CODE_OF_P2S" # Secret: obtain from the printer LAN settings.
+
+      # P2S snapshots use the RTSPS/H.264 camera through ffmpeg.
+      camera_timeout_seconds: 10
+      camera_warmup_frames: 2
+      mqtt_reconnect_min_seconds: 2
+      mqtt_reconnect_max_seconds: 60
+
+    notifications:
+      started: true
+      layer1: true
+      progress50: true
+      finished: true
+      pause: true
       failed: true
 
 # Notification implementation. Currently supported: telegram. Default: telegram.

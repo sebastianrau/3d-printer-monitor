@@ -5,7 +5,9 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/3d-printer-monitor ./cmd/3d-printer-monitor
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/3d-printer-monitor /3d-printer-monitor
+USER 65532:65532
 ENTRYPOINT ["/3d-printer-monitor"]
 CMD ["--config", "/etc/3d-printer-monitor/config.yaml"]

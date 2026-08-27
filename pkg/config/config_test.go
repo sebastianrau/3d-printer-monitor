@@ -44,7 +44,7 @@ func TestExampleConfigurationContainsOnlySupportedOptions(t *testing.T) {
 }
 
 func TestUnsupportedBambuModelsAreRejected(t *testing.T) {
-	for _, model := range []string{"p2s", "x1", "x1c"} {
+	for _, model := range []string{"x1", "x1c"} {
 		t.Run(model, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
 			content := []byte("printers:\n  - type: bambu\n    bambu:\n      model: " + model + "\n      host: 192.0.2.1\n      serial: SERIAL\n      access_code: CODE\n")
@@ -55,6 +55,21 @@ func TestUnsupportedBambuModelsAreRejected(t *testing.T) {
 				t.Fatalf("expected model %q to be rejected", model)
 			}
 		})
+	}
+}
+
+func TestP2SConfigurationIsSupported(t *testing.T) {
+	c := loadTestConfig(t, `
+printers:
+  - type: bambu
+    bambu:
+      model: p2s
+      host: 192.0.2.1
+      serial: P2SERIAL
+      access_code: CODE
+`)
+	if got := c.Printers[0].RegistryKey(); got != "bambu/p2s" {
+		t.Fatalf("registry key = %q", got)
 	}
 }
 

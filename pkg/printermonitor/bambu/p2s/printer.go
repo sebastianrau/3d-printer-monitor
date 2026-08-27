@@ -1,4 +1,5 @@
-package p1s
+// Package p2s implements Bambu Lab P2S printer communication.
+package p2s
 
 import (
 	"context"
@@ -24,7 +25,7 @@ func New(c config.Printer) *Printer {
 	settings := c.BambuSettings()
 	p := &Printer{Config: c, Bambu: settings}
 	p.connection = bambu.NewMQTTConnection(c, settings, protocol{serial: settings.Serial})
-	p.camera = bambu.NewMJPEGCamera(settings)
+	p.camera = bambu.NewRTSPCamera(settings)
 	return p
 }
 
@@ -60,7 +61,7 @@ func (p *Printer) Diagnose(ctx context.Context, timeout time.Duration) ([]byte, 
 	defer cancelCamera()
 	image, err := p.CaptureSnapshot(cameraCtx)
 	if err != nil {
-		return nil, fmt.Errorf("P1S camera: %w", err)
+		return nil, fmt.Errorf("P2S camera: %w", err)
 	}
 	return image, nil
 }
@@ -82,6 +83,7 @@ func (p protocol) DecodeReport(payload []byte, accumulated map[string]any) (map[
 	v, _ := accumulated["print"].(map[string]any)
 	return v, nil
 }
+
 func deepMerge(dst, src map[string]any) {
 	for k, v := range src {
 		sm, ok := v.(map[string]any)

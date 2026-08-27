@@ -14,5 +14,5 @@ type Printer interface {
 	Start(context.Context, ReportHandler) error
 	Stop()
 	CaptureSnapshot(context.Context) ([]byte, error)
-	Diagnose(context.Context, time.Duration) error
+	Diagnose(context.Context, time.Duration) ([]byte, error)
 }

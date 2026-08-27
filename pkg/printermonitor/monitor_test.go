@@ -13,7 +13,9 @@ type fakePrinter struct{}
 func (fakePrinter) Start(context.Context, ReportHandler) error      { return nil }
 func (fakePrinter) Stop()                                           {}
 func (fakePrinter) CaptureSnapshot(context.Context) ([]byte, error) { return []byte("jpeg"), nil }
-func (fakePrinter) Diagnose(context.Context, time.Duration) error   { return nil }
+func (fakePrinter) Diagnose(context.Context, time.Duration) ([]byte, error) {
+	return []byte("jpeg"), nil
+}
 
 type noopMessenger struct{}
 
