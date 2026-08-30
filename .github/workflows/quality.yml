@@ -41,6 +41,9 @@ jobs:
             exit 1
           fi
 
+      - name: Validate installer syntax
+        run: sh -n install.sh
+
       - name: Verify module files
         run: |
           go mod tidy

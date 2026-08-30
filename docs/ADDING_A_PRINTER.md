@@ -190,15 +190,12 @@ Use `httptest.Server`, fake transports, or injected clients. Tests must not need
 real printer hardware. Then run:
 
 ```bash
-go test -race ./...
-go vet ./...
-go build ./cmd/3d-printer-monitor
+make check
 ```
 
-Finally, use the real-device diagnostic path:
-
-```bash
-3d-printer-monitor --config config.yaml --test-printer "Workshop printer" --test-timeout 10
-```
+These are contributor-only source checks. Normal installation uses the
+published container image and `install.sh`. After the implementation has been
+published in an image, use the real-device diagnostic path documented in the
+project README.
 
 No change to `cmd/3d-printer-monitor/main.go` is required.

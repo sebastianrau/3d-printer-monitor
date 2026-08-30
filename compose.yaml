@@ -1,0 +1,11 @@
+services:
+  3d-printer-monitor:
+    image: ${IMAGE:-ghcr.io/sebastianrau/3d-printer-monitor:latest}
+    container_name: ${CONTAINER:-3d-printer-monitor}
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - type: bind
+        source: ${CONFIG:-./config.yaml}
+        target: /etc/3d-printer-monitor/config.yaml
+        read_only: true

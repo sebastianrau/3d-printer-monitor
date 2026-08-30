@@ -65,76 +65,104 @@ printers:
       access_code: "..."
 ```
 
-For a P2S, set `model: p2s`. P2S camera snapshots require `ffmpeg` on the host;
-it is already installed in the project Docker image. `camera_warmup_frames`
-controls how many decoded frames are discarded before capturing the snapshot.
+For a P2S, set `model: p2s`. P2S camera snapshots use `ffmpeg`, which is already
+installed in the project Docker image; the host does not need it.
+`camera_warmup_frames` controls how many decoded frames are discarded before
+capturing the snapshot.
 
 A non-Bambu driver can own a block such as `octoprint:` or `serial:` without
 placing its fields in the Bambu configuration. Unknown and obsolete YAML fields
 are rejected during startup.
 
-## Run
+## Install and run
+
+Released container images are published at
+`ghcr.io/sebastianrau/3d-printer-monitor`. A multi-architecture manifest lets
+Docker automatically select `linux/amd64`, `linux/arm64`, or `linux/arm/v7`.
+The installer creates `~/3d-printer-monitor/config.yaml` on its first run. Edit
+that file, then run the same command again to pull and start the container:
 
 ```bash
-cp config.example.yaml config.yaml
-go run ./cmd/3d-printer-monitor --config config.yaml
+curl -fsSL https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/main/install.sh | sh
 ```
 
-Do not commit real printer access codes or bot tokens.
-
-## Tests and build
+It never overwrites an existing configuration. To inspect the script before
+running it, download it instead:
 
 ```bash
-go test ./...
-go vet ./...
-make build
-make build-container
-docker build -t 3d-printer-monitor:local .
+curl -fsSLO https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/main/install.sh
+less install.sh
+sh install.sh
 ```
 
-`make build-container` is the alternative to a local Go installation. It
-compiles the binary with the same `golang:1.26-bookworm` image used by the
-Dockerfile's `FROM golang:1.26-bookworm AS build` stage and writes
-`build/3d-printer-monitor`. The local `make build` target writes to the same
-directory. The container build detects the host operating system and CPU
-architecture so the resulting binary runs on the host rather than inside the
-Linux build container. Override them when cross-compiling, for example with
-`TARGET_GOOS=linux TARGET_GOARCH=arm64`.
-
-`make docker-build` runs `make build-container` first, so it also creates the
-host binary in `build/` before building the Docker image.
-
-The Makefile can build the image and start the container with the local
-`config.yaml` mounted read-only:
+Use an existing configuration from another location with:
 
 ```bash
-make docker-up
-make docker-logs
+CONFIG_PATH=/path/to/config.yaml sh install.sh
 ```
 
-A running Docker-compatible engine is required. On macOS, install and start
-Docker Desktop, Colima, OrbStack, or another container runtime. Verify it before
-building with `docker info`. The optional Docker Buildx plugin removes Docker's
-legacy-builder warning but does not replace the required engine.
+A running Docker-compatible engine is required. Docker Compose is not needed.
+On macOS, install and start Docker Desktop, Colima, OrbStack, or another
+container runtime and verify it with `docker info`.
 
-Use `make help` to list lifecycle targets. Image name, container name, and
-configuration path can be overridden:
+The same installer command updates an existing installation. It pulls the
+current image and replaces only the application container without overwriting
+`config.yaml`.
+
+Do not commit real printer access codes or bot tokens. See the
+[Raspberry Pi installation guide](docs/RASPBERRY_PI_INSTALLATION.md) for the
+complete host setup.
+
+## Development
+
+Local source builds are needed only when changing the application itself:
 
 ```bash
-make docker-up IMAGE=registry.example/3d-printer-monitor:latest CONFIG=/path/to/config.yaml
+make check
 ```
+
+This runs `go vet ./...`, race-enabled tests, and the local binary build. Normal
+installation and updates do not require Git, Go, Make, or Docker Compose.
+
+GitHub releases publish version, major/minor, major, commit-SHA, and `latest`
+tags. Publishing uses the repository `GITHUB_TOKEN`; no registry secret is
+required. After the first publication, set the GHCR package visibility to
+public in its GitHub package settings to allow anonymous pulls.
 
 Test a configured printer or discover a Telegram chat ID:
 
 ```bash
-3d-printer-monitor --config config.yaml --test-printer "Office P1S" --test-timeout 10
-3d-printer-monitor --config config.yaml --find-telegram-chat-id --telegram-wait 30
+mkdir -p "$HOME/3d-printer-monitor/diagnostics"
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --volume "$HOME/3d-printer-monitor/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
+  --volume "$HOME/3d-printer-monitor/diagnostics:/diagnostics" \
+  --workdir /diagnostics \
+  ghcr.io/sebastianrau/3d-printer-monitor:latest \
+  --config /etc/3d-printer-monitor/config.yaml \
+  --test-printer "Office P1S" --test-timeout 10
 ```
 
-The printer diagnostic stores its captured image in the current directory as
-`<printer-name>-diagnostic.jpg`. During normal monitoring, camera images are held
-only in memory and passed directly to the messenger; no image files are written
-to the device.
+The printer diagnostic stores its captured image in
+`~/3d-printer-monitor/diagnostics` as `<printer-name>-diagnostic.jpg`.
+
+Only one process may poll a Telegram bot. Stop the normal monitor before
+discovering the chat ID, send `/id` to the bot during the wait period, then run
+the installer again afterward:
+
+```bash
+docker stop 3d-printer-monitor 2>/dev/null || true
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --volume "$HOME/3d-printer-monitor/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
+  ghcr.io/sebastianrau/3d-printer-monitor:latest \
+  --config /etc/3d-printer-monitor/config.yaml \
+  --find-telegram-chat-id --telegram-wait 30
+curl -fsSL https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/main/install.sh | sh
+```
+
+During normal monitoring, camera images are held only in memory and passed
+directly to the messenger; no image files are written to the device.
 
 Milestone and duplicate-suppression state also remains in memory. On startup,
 the first printer report becomes the baseline so an already running print does
