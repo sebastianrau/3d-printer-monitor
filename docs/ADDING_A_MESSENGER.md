@@ -219,10 +219,10 @@ Use `httptest.Server` or an injected fake client; tests must not call the real
 provider. Then run:
 
 ```bash
-go test -race ./...
-go vet ./...
-go build ./cmd/3d-printer-monitor
+make check
 ```
 
-Select the new provider in `config.yaml` and start normally. No change to
-`cmd/3d-printer-monitor/main.go` is required.
+These are contributor-only source checks. Normal installation uses the
+published container image and `install.sh`. After publishing the implementation
+in an image, select the new provider in `config.yaml` and deploy it through the
+installer. No change to `cmd/3d-printer-monitor/main.go` is required.

@@ -80,33 +80,148 @@ ssh observer@192.168.1.100
 
 Confirm that this is the expected host key before accepting it.
 
-## 3. Update and verify the operating system
+Optionally reserve the Pi's address in the router's DHCP settings. A stable
+address makes administration easier, although 3d-printer-monitor itself does not
+listen on a network port.
+
+## 3. Install Docker Engine
+
+Install the Docker package maintained by Raspberry Pi OS/Debian together with
+`curl`, which is used once to download the configuration template:
 
 ```bash
+sudo apt update
+sudo apt install -y docker.io curl
+sudo systemctl enable --now docker
+```
+
+Allow the current user to use Docker without `sudo`:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+Raspberry Pi Connect does not reliably preserve a shell across the required
+session refresh. Reboot instead, then reconnect:
+
+```bash
+sudo reboot
+```
+
+After the reboot, reconnect through Raspberry Pi Connect or SSH.
+
+Verify Docker:
+
+```bash
+docker info
+docker run --rm hello-world
+```
+
+Membership in the `docker` group grants root-equivalent control of the host.
+Only add trusted administrator accounts.
+
+The distribution package can be older than Docker CE, but it provides all
+features used by this project: image pulls, bind mounts, restart policies, and
+container lifecycle commands. Docker also documents its separately maintained
+[Docker CE installation](https://docs.docker.com/engine/install/raspberry-pi-os/)
+for users who specifically need current upstream releases.
+
+## 4. Install and configure 3d-printer-monitor
+
+The quickest installation uses the deployment script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/main/install.sh | sh
+```
+
+On its first run, the script creates
+`~/3d-printer-monitor/config.yaml` with owner-only permissions and exits. This
+user-owned location avoids requiring root privileges for routine configuration
+changes while still protecting the secrets with mode `600`. `/etc` would be
+appropriate for a system-managed package, but adds unnecessary ownership and
+permission handling for this user-managed Docker installation.
+
+Edit the new file:
+
+```bash
+nano ~/3d-printer-monitor/config.yaml
+```
+
+At minimum, configure:
+
+- `printers[].name`
+- `printers[].bambu.host`
+- `printers[].bambu.serial`
+- `printers[].bambu.access_code`
+- `messaging.telegram.bot_token`
+
+Then run the same installer command again. It pulls the matching ARM image,
+creates the container, mounts the configuration read-only, and configures
+automatic restart. Existing configurations are never overwritten.
+
+An existing configuration can be used without copying it:
+
+```bash
+CONFIG_PATH=/path/to/config.yaml sh install.sh
+```
+
+The application itself is delivered as a container image. A Git checkout and
+Go toolchain are not required on the Pi.
+
+If the Telegram chat ID is not known yet, leave `chat_id` empty temporarily,
+run the installer once to pull the image, stop the monitor to avoid two bot
+pollers, and run the discovery command:
+
+```bash
+docker stop 3d-printer-monitor
+docker run --rm --user "$(id -u):$(id -g)" \
+  --volume "$HOME/3d-printer-monitor/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
+  ghcr.io/sebastianrau/3d-printer-monitor:latest \
+  --config /etc/3d-printer-monitor/config.yaml \
+  --find-telegram-chat-id --telegram-wait 60
+```
+
+Send `/id` to the bot during the wait period, enter the reported ID in
+`~/3d-printer-monitor/config.yaml`, keep it quoted as a string, and run the
+installer again to start normal monitoring.
+
+## 5. Operations and application updates
+
+The installer is also the normal update command. It pulls the configured image
+and safely replaces the existing named container without changing
+`config.yaml`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/main/install.sh | sh
+```
+
+Useful commands:
+
+```bash
+docker ps --filter name=3d-printer-monitor
+docker logs --follow 3d-printer-monitor
+docker stop 3d-printer-monitor
+docker restart 3d-printer-monitor
+```
+
+## 6. Update Raspberry Pi OS
+
+Run operating-system upgrades through SSH, not a Raspberry Pi Connect shell.
+Package upgrades can restart the Raspberry Pi Connect service, which terminates
+its remote shell and can interrupt the command that is performing the upgrade.
+
+Connect through SSH and update the Pi:
+
+```bash
+ssh observer@3d-printer-monitor.local
 sudo apt update
 sudo apt full-upgrade -y
 sudo reboot
 ```
 
-Reconnect after the reboot and verify the 64-bit architecture, clock, storage,
-and network:
+## 7. Raspberry Pi Connect (optional)
 
-```bash
-uname -m
-timedatectl
-df -h /
-hostname -I
-ping -c 3 1.1.1.1
-```
-
-`uname -m` should report `aarch64`.
-
-Optionally reserve the Pi's address in the router's DHCP settings. A stable
-address makes administration easier, although 3d-printer-monitor itself does not
-listen on a network port.
-
-## 4. Verify Raspberry Pi Connect (optional)
-The Pi should then appear at
+The Pi should appear at
 [connect.raspberrypi.com](https://connect.raspberrypi.com/). Raspberry Pi
 documents linking, remote-shell behavior, and troubleshooting in the official
 [Raspberry Pi Connect documentation](https://www.raspberrypi.com/documentation/services/connect.html).
@@ -125,210 +240,3 @@ rpi-connect signin
 
 Open the verification URL printed by `rpi-connect signin`, sign in with the
 same Raspberry Pi ID, and assign a unique device name.
-
-## 5. Install Docker Engine
-
-Install the Docker package maintained by Raspberry Pi OS/Debian together with
-the tools needed for this project:
-
-```bash
-sudo apt update
-sudo apt install -y docker.io git make
-sudo systemctl enable --now docker
-```
-
-Allow the current user to use Docker without `sudo`:
-
-```bash
-sudo usermod -aG docker "$USER"
-```
-
-Log out completely and reconnect so the new group membership takes effect:
-
-```bash
-exit
-ssh observer@3d-printer-monitor.local
-```
-
-Verify Docker:
-
-```bash
-docker info
-docker run --rm hello-world
-docker compose version
-```
-
-Membership in the `docker` group grants root-equivalent control of the host.
-Only add trusted administrator accounts.
-
-The project uses the Docker Compose plugin to manage the published container
-image. If `docker compose version` is unavailable, install the plugin:
-
-```bash
-sudo apt install -y docker-compose-plugin
-docker compose version
-```
-
-The distribution package can be older than Docker CE, but it provides all
-features used by this project: image pulls, bind mounts, restart policies, and
-container lifecycle commands. Docker also documents its separately maintained
-[Docker CE installation](https://docs.docker.com/engine/install/raspberry-pi-os/)
-for users who specifically need current upstream releases.
-
-## 6. Download 3d-printer-monitor
-
-```bash
-mkdir -p ~/src
-cd ~/src
-git clone https://github.com/sebastianrau/3d-printer-monitor.git
-cd 3d-printer-monitor
-```
-
-## 7. Configure the application
-
-```bash
-cp config.example.yaml config.yaml
-nano config.yaml
-```
-
-At minimum, configure:
-
-- `printers[].name`
-- `printers[].bambu.host`
-- `printers[].bambu.serial`
-- `printers[].bambu.access_code`
-- `messaging.telegram.bot_token`
-
-Protect the credentials:
-
-```bash
-chmod 600 config.yaml
-```
-
-The Makefile starts the container with the current user's numeric UID and GID,
-so the process can read this owner-only file. The file is mounted read-only and
-is excluded from Git and the Docker build context.
-
-If the Telegram chat ID is not known yet, leave `chat_id` empty temporarily,
-pull the image, and run the discovery command:
-
-```bash
-make docker-pull
-docker run --rm --user "$(id -u):$(id -g)" \
-	--volume "$(pwd)/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
-	ghcr.io/sebastianrau/3d-printer-monitor:latest \
-  --config /etc/3d-printer-monitor/config.yaml \
-  --find-telegram-chat-id --telegram-wait 60
-```
-
-Send `/id` to the bot during the wait period, enter the reported ID in
-`config.yaml`, and keep it quoted as a string.
-
-## 8. Build and start the container
-
-```bash
-make docker-up
-make docker-status
-make docker-logs
-```
-
-`docker-up` pulls the matching ARM64 or ARMv7 image from GHCR and creates the
-`3d-printer-monitor` container. The configuration is mounted read-only. The
-`--restart unless-stopped` policy starts the container after Docker and the Pi
-restart, unless it was explicitly stopped.
-
-Press Ctrl+C to leave `docker-logs`; this does not stop the container.
-
-Verify restart behavior:
-
-```bash
-sudo reboot
-```
-
-After reconnecting:
-
-```bash
-make docker-status
-make docker-logs
-```
-
-## 9. Operations and updates
-
-Useful commands:
-
-```bash
-make docker-status
-make docker-logs
-make docker-stop
-make docker-restart
-```
-
-Update the application:
-
-```bash
-cd ~/src/3d-printer-monitor
-git pull --ff-only
-make docker-recreate
-```
-
-`docker-recreate` removes and replaces only the named application container.
-It does not delete `config.yaml`, images, or unrelated containers.
-
-Update the Pi periodically:
-
-```bash
-sudo apt update
-sudo apt full-upgrade -y
-sudo reboot
-```
-
-## 10. Troubleshooting
-
-### Docker is not reachable
-
-```bash
-systemctl status docker
-sudo systemctl restart docker
-docker info
-groups
-```
-
-If `docker info` works only with `sudo`, log out and back in after adding the
-user to the `docker` group.
-
-### The container exits immediately
-
-```bash
-make docker-status
-docker logs 3d-printer-monitor
-```
-
-Most startup failures are invalid YAML, missing credentials, an unsupported
-printer model, or a configuration file that is not readable by the configured
-container UID.
-
-### The printer is unreachable
-
-```bash
-ping -c 3 PRINTER_IP
-make docker-recreate
-make docker-logs
-```
-
-Confirm that the Pi and printer can communicate across the LAN and that client
-isolation is disabled on the Wi-Fi network. Recheck the printer serial and LAN
-access code.
-
-### Raspberry Pi Connect is offline
-
-```bash
-rpi-connect status
-rpi-connect on
-journalctl --user --unit rpi-connect --since today
-```
-
-Confirm internet access and that user lingering is enabled:
-
-```bash
-loginctl show-user "$USER" --property=Linger
-```
