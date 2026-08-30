@@ -121,10 +121,10 @@ func (c *Config) defaults() {
 		c.Messaging.Telegram.Caption = "🖨️ {printer}: {milestone} ({progress}%)"
 	}
 	if c.Messaging.Telegram.TimeoutSeconds == 0 {
-		c.Messaging.Telegram.TimeoutSeconds = 30
+		c.Messaging.Telegram.TimeoutSeconds = 60
 	}
 	if c.Messaging.Telegram.CommandPollTimeoutSeconds == 0 {
-		c.Messaging.Telegram.CommandPollTimeoutSeconds = 20
+		c.Messaging.Telegram.CommandPollTimeoutSeconds = 60
 	}
 	if c.Messaging.Telegram.CommandCooldownSeconds == 0 {
 		c.Messaging.Telegram.CommandCooldownSeconds = 10

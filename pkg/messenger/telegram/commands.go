@@ -79,7 +79,7 @@ func (p *Poller) getWith(ctx context.Context, v url.Values) ([]update, error) {
 	if e != nil {
 		return nil, e
 	}
-	r, e := p.Telegram.HTTP.Do(req)
+	r, e := p.Telegram.longPollClient(v).Do(req)
 	if e != nil {
 		return nil, e
 	}

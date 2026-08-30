@@ -123,15 +123,16 @@ messaging:
     # Restrict forwarding/saving where Telegram supports it. Default: false.
     protect_content: false
 
-    # HTTP timeout for image/text requests in seconds. Default: 30.
-    timeout_seconds: 30
+    # HTTP timeout for image/text requests in seconds. Default: 60.
+    timeout_seconds: 60
 
     # Enable /snapshot and compatible /snapshop command polling. Only chat_id
     # is authorized. Webhooks cannot coexist with polling. Default: true.
     commands_enabled: true
 
-    # Telegram getUpdates long-poll duration in seconds. Default: 20.
-    command_poll_timeout_seconds: 20
+    # Telegram getUpdates long-poll duration in seconds. The HTTP deadline is
+    # automatically kept at least 10 seconds longer. Default: 60.
+    command_poll_timeout_seconds: 60
 
     # Delay between accepted commands from the same chat. Set 0 to disable.
     # Default: 10 seconds.

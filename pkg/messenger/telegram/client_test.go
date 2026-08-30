@@ -16,6 +16,24 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func TestLongPollClientExtendsHTTPDeadline(t *testing.T) {
+	client := New(config.TelegramConfig{TimeoutSeconds: 30})
+	pollClient := client.longPollClient(url.Values{"timeout": {"60"}})
+	if pollClient.Timeout != 70*time.Second {
+		t.Fatalf("HTTP timeout = %s, want 70s", pollClient.Timeout)
+	}
+	if client.HTTP.Timeout != 30*time.Second {
+		t.Fatalf("base HTTP timeout changed to %s", client.HTTP.Timeout)
+	}
+}
+
+func TestLongPollClientKeepsLongerConfiguredDeadline(t *testing.T) {
+	client := New(config.TelegramConfig{TimeoutSeconds: 90})
+	if got := client.longPollClient(url.Values{"timeout": {"60"}}); got != client.HTTP {
+		t.Fatal("expected existing longer HTTP deadline to be preserved")
+	}
+}
+
 func TestFindChatIDsPreservesNumericChatID(t *testing.T) {
 	var sentChatID string
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {

@@ -40,6 +40,20 @@ func New(c config.TelegramConfig) *Telegram {
 	return &Telegram{Config: c, BaseURL: "https://api.telegram.org/bot" + c.BotToken, HTTP: &http.Client{Timeout: time.Duration(c.TimeoutSeconds) * time.Second}, statuses: map[string]statusMessage{}, now: time.Now, wait: waitContext}
 }
 
+func (t *Telegram) longPollClient(params url.Values) *http.Client {
+	seconds, err := strconv.Atoi(params.Get("timeout"))
+	if err != nil || seconds <= 0 {
+		return t.HTTP
+	}
+	minimum := time.Duration(seconds+10) * time.Second
+	if t.HTTP.Timeout >= minimum {
+		return t.HTTP
+	}
+	client := *t.HTTP
+	client.Timeout = minimum
+	return &client
+}
+
 func (t *Telegram) Validate() error {
 	if t.Config.ChatID == "" {
 		return fmt.Errorf("telegram is missing chat_id")
@@ -215,11 +229,7 @@ func (t *Telegram) rawUpdates(ctx context.Context, params url.Values) ([]map[str
 	if err != nil {
 		return nil, err
 	}
-	client := t.HTTP
-	if seconds, err := strconv.Atoi(params.Get("timeout")); err == nil && seconds > 0 {
-		client = &http.Client{Timeout: time.Duration(seconds+10) * time.Second, Transport: t.HTTP.Transport}
-	}
-	r, err := client.Do(req)
+	r, err := t.longPollClient(params).Do(req)
 	if err != nil {
 		return nil, err
 	}
