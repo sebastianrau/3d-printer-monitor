@@ -1,32 +1,29 @@
 DOCKER ?= docker
-IMAGE ?= 3d-printer-monitor:local
+COMPOSE ?= $(DOCKER) compose
+IMAGE ?= ghcr.io/sebastianrau/3d-printer-monitor:latest
 CONTAINER ?= 3d-printer-monitor
-CONFIG ?= config.yaml
-CONTAINER_CONFIG ?= /etc/3d-printer-monitor/config.yaml
+CONFIG ?= ./config.yaml
 HOST_UID ?= $(shell id -u)
 HOST_GID ?= $(shell id -g)
-GO_BUILD_IMAGE ?= golang:1.26-bookworm
 BUILD_DIR ?= build
-TARGET_GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
-TARGET_GOARCH ?= $(shell uname -m | sed -e 's/^x86_64$$/amd64/' -e 's/^aarch64$$/arm64/')
+
+COMPOSE_ENV = IMAGE="$(IMAGE)" CONTAINER="$(CONTAINER)" CONFIG="$(abspath $(CONFIG))" HOST_UID="$(HOST_UID)" HOST_GID="$(HOST_GID)"
 
 .DEFAULT_GOAL := help
 
-.PHONY: help test build build-container check-docker docker-build docker-start docker-up docker-stop docker-restart docker-recreate docker-logs docker-status
+.PHONY: help test build check-docker check-config docker-pull docker-up docker-stop docker-restart docker-recreate docker-logs docker-status
 
 help:
 	@echo "Available targets:"
 	@echo "  make test              Run Go tests"
 	@echo "  make build             Build the local Go binary"
-	@echo "  make build-container   Build the Go binary in the Go 1.26 Bookworm container"
-	@echo "  make docker-build      Build the Docker image"
-	@echo "  make docker-start      Start a new container"
-	@echo "  make docker-up         Build the image and start a new container"
-	@echo "  make docker-stop       Stop the container"
-	@echo "  make docker-restart    Restart the existing container"
-	@echo "  make docker-recreate   Replace the container using the current image"
-	@echo "  make docker-logs       Follow container logs"
-	@echo "  make docker-status     Show container status"
+	@echo "  make docker-pull       Pull the published multi-architecture image"
+	@echo "  make docker-up         Pull and start the service"
+	@echo "  make docker-stop       Stop and remove the service"
+	@echo "  make docker-restart    Restart the service"
+	@echo "  make docker-recreate   Pull and recreate the service"
+	@echo "  make docker-logs       Follow service logs"
+	@echo "  make docker-status     Show service status"
 	@echo ""
 	@echo "Overrides: IMAGE=... CONTAINER=... CONFIG=..."
 
@@ -37,71 +34,42 @@ build:
 	mkdir -p "$(BUILD_DIR)"
 	go build -o "$(BUILD_DIR)/3d-printer-monitor" ./cmd/3d-printer-monitor
 
-build-container: check-docker
-	mkdir -p "$(BUILD_DIR)"
-	$(DOCKER) run --rm \
-		--user "$(HOST_UID):$(HOST_GID)" \
-		--volume "$(CURDIR):/src" \
-		--workdir /src \
-		--env CGO_ENABLED=0 \
-		--env GOOS="$(TARGET_GOOS)" \
-		--env GOARCH="$(TARGET_GOARCH)" \
-		--env GOCACHE=/src/$(BUILD_DIR)/.cache/go-build \
-		--env GOMODCACHE=/src/$(BUILD_DIR)/.cache/go-mod \
-		"$(GO_BUILD_IMAGE)" \
-		go build -buildvcs=false -trimpath -ldflags="-s -w" -o "$(BUILD_DIR)/3d-printer-monitor" ./cmd/3d-printer-monitor
-
 check-docker:
 	@$(DOCKER) info >/dev/null 2>&1 || { \
 		echo "Docker Engine is not reachable."; \
-		echo "Start Docker Desktop, Colima, OrbStack, or another Docker daemon."; \
-		echo "Then verify the selected context with: docker context ls"; \
-		echo "Current context: $$($(DOCKER) context show 2>/dev/null || echo unknown)"; \
+		exit 1; \
+	}
+	@$(COMPOSE) version >/dev/null 2>&1 || { \
+		echo "Docker Compose is not available."; \
 		exit 1; \
 	}
 
-docker-build: build-container
-	$(DOCKER) build --tag "$(IMAGE)" .
-
-docker-start: check-docker check-config
-	@if $(DOCKER) container inspect "$(CONTAINER)" >/dev/null 2>&1; then \
-		echo "Container $(CONTAINER) already exists."; \
-		echo "Use 'make docker-restart' or 'make docker-recreate'."; \
-		exit 1; \
-	fi
-	$(DOCKER) run --detach \
-		--name "$(CONTAINER)" \
-		--restart unless-stopped \
-		--user "$(HOST_UID):$(HOST_GID)" \
-		--volume "$(abspath $(CONFIG)):$(CONTAINER_CONFIG):ro" \
-		"$(IMAGE)"
-
-docker-up:
-	$(MAKE) docker-build
-	$(MAKE) docker-start
-
-docker-stop: check-docker
-	$(DOCKER) stop "$(CONTAINER)"
-
-docker-restart: check-docker
-	$(DOCKER) restart "$(CONTAINER)"
-
-docker-recreate: check-docker check-config
-	@if $(DOCKER) container inspect "$(CONTAINER)" >/dev/null 2>&1; then \
-		$(DOCKER) rm --force "$(CONTAINER)"; \
-	fi
-	$(MAKE) docker-start
-
-docker-logs: check-docker
-	$(DOCKER) logs --follow "$(CONTAINER)"
-
-docker-status: check-docker
-	$(DOCKER) ps --all --filter "name=^/$(CONTAINER)$$"
-
-.PHONY: check-config
 check-config:
 	@test -f "$(CONFIG)" || { \
 		echo "Configuration file not found: $(CONFIG)"; \
 		echo "Copy config.example.yaml to $(CONFIG) and configure it first."; \
 		exit 1; \
 	}
+
+docker-pull: check-docker
+	$(COMPOSE_ENV) $(COMPOSE) pull
+
+docker-up: check-docker check-config
+	$(COMPOSE_ENV) $(COMPOSE) pull
+	$(COMPOSE_ENV) $(COMPOSE) up --detach --remove-orphans
+
+docker-stop: check-docker
+	$(COMPOSE_ENV) $(COMPOSE) down
+
+docker-restart: check-docker
+	$(COMPOSE_ENV) $(COMPOSE) restart
+
+docker-recreate: check-docker check-config
+	$(COMPOSE_ENV) $(COMPOSE) pull
+	$(COMPOSE_ENV) $(COMPOSE) up --detach --force-recreate --remove-orphans
+
+docker-logs: check-docker
+	$(COMPOSE_ENV) $(COMPOSE) logs --follow
+
+docker-status: check-docker
+	$(COMPOSE_ENV) $(COMPOSE) ps

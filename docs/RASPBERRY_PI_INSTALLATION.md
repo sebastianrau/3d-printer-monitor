@@ -155,23 +155,22 @@ Verify Docker:
 ```bash
 docker info
 docker run --rm hello-world
+docker compose version
 ```
 
 Membership in the `docker` group grants root-equivalent control of the host.
 Only add trusted administrator accounts.
 
-The project does not require Docker Compose or Buildx. If `docker build` prints
-only a legacy-builder deprecation warning, the build can still complete. If a
-future Docker version requires Buildx and Raspberry Pi OS provides the package,
-install it separately:
+The project uses the Docker Compose plugin to manage the published container
+image. If `docker compose version` is unavailable, install the plugin:
 
 ```bash
-sudo apt install -y docker-buildx
-docker buildx version
+sudo apt install -y docker-compose-plugin
+docker compose version
 ```
 
 The distribution package can be older than Docker CE, but it provides all
-features used by this project: image builds, bind mounts, restart policies, and
+features used by this project: image pulls, bind mounts, restart policies, and
 container lifecycle commands. Docker also documents its separately maintained
 [Docker CE installation](https://docs.docker.com/engine/install/raspberry-pi-os/)
 for users who specifically need current upstream releases.
@@ -211,13 +210,13 @@ so the process can read this owner-only file. The file is mounted read-only and
 is excluded from Git and the Docker build context.
 
 If the Telegram chat ID is not known yet, leave `chat_id` empty temporarily,
-build the image, and run the discovery command:
+pull the image, and run the discovery command:
 
 ```bash
-make docker-build
+make docker-pull
 docker run --rm --user "$(id -u):$(id -g)" \
-  --volume "$(pwd)/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
-  3d-printer-monitor:local \
+	--volume "$(pwd)/config.yaml:/etc/3d-printer-monitor/config.yaml:ro" \
+	ghcr.io/sebastianrau/3d-printer-monitor:latest \
   --config /etc/3d-printer-monitor/config.yaml \
   --find-telegram-chat-id --telegram-wait 60
 ```
@@ -233,8 +232,8 @@ make docker-status
 make docker-logs
 ```
 
-`docker-up` builds a native ARM64 image and creates the `3d-printer-monitor`
-container. The configuration is mounted read-only. The
+`docker-up` pulls the matching ARM64 or ARMv7 image from GHCR and creates the
+`3d-printer-monitor` container. The configuration is mounted read-only. The
 `--restart unless-stopped` policy starts the container after Docker and the Pi
 restart, unless it was explicitly stopped.
 
@@ -269,7 +268,6 @@ Update the application:
 ```bash
 cd ~/src/3d-printer-monitor
 git pull --ff-only
-make docker-build
 make docker-recreate
 ```
 

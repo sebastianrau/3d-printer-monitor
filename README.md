@@ -88,23 +88,12 @@ Do not commit real printer access codes or bot tokens.
 go test ./...
 go vet ./...
 make build
-make build-container
-docker build -t 3d-printer-monitor:local .
 ```
 
-`make build-container` is the alternative to a local Go installation. It
-compiles the binary with the same `golang:1.26-bookworm` image used by the
-Dockerfile's `FROM golang:1.26-bookworm AS build` stage and writes
-`build/3d-printer-monitor`. The local `make build` target writes to the same
-directory. The container build detects the host operating system and CPU
-architecture so the resulting binary runs on the host rather than inside the
-Linux build container. Override them when cross-compiling, for example with
-`TARGET_GOOS=linux TARGET_GOARCH=arm64`.
-
-`make docker-build` runs `make build-container` first, so it also creates the
-host binary in `build/` before building the Docker image.
-
-The Makefile can build the image and start the container with the local
+Released container images are published at
+`ghcr.io/sebastianrau/3d-printer-monitor`. A multi-architecture manifest lets
+Docker automatically select `linux/amd64`, `linux/arm64`, or `linux/arm/v7`.
+The Makefile pulls that image and starts it through Compose with the local
 `config.yaml` mounted read-only:
 
 ```bash
@@ -112,17 +101,21 @@ make docker-up
 make docker-logs
 ```
 
-A running Docker-compatible engine is required. On macOS, install and start
-Docker Desktop, Colima, OrbStack, or another container runtime. Verify it before
-building with `docker info`. The optional Docker Buildx plugin removes Docker's
-legacy-builder warning but does not replace the required engine.
+A running Docker-compatible engine with Docker Compose is required. On macOS,
+install and start Docker Desktop, Colima, OrbStack, or another container
+runtime. Verify it with `docker info` and `docker compose version`.
 
 Use `make help` to list lifecycle targets. Image name, container name, and
 configuration path can be overridden:
 
 ```bash
-make docker-up IMAGE=registry.example/3d-printer-monitor:latest CONFIG=/path/to/config.yaml
+make docker-up IMAGE=ghcr.io/sebastianrau/3d-printer-monitor:1.0.0 CONFIG=/path/to/config.yaml
 ```
+
+GitHub releases publish version, major/minor, major, commit-SHA, and `latest`
+tags. Publishing uses the repository `GITHUB_TOKEN`; no registry secret is
+required. After the first publication, set the GHCR package visibility to
+public in its GitHub package settings to allow anonymous pulls.
 
 Test a configured printer or discover a Telegram chat ID:
 
