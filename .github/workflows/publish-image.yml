@@ -1,6 +1,11 @@
 name: Publish container image
 
 on:
+  # Bootstrap/test publishing before this workflow exists on the default branch.
+  # Remove this branch-specific trigger after the feature has been merged.
+  push:
+    branches:
+      - feat/ghcr.io
   release:
     types: [published]
   workflow_dispatch:
