@@ -10,6 +10,9 @@ tests/
 test-result/*
 !test-result/.gitkeep
 
+diagnostics/
+diagnostics/*
+
 # Go build and test artifacts
 /build/
 *.test

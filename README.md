@@ -183,7 +183,7 @@ MQTT supplies `stg_cur`, known printer operations such as `Heating bed` or
 starts while a job is already active, it creates a replacement status message
 from the first complete MQTT report and continues updating that message. When
 remaining time is available, the message also shows the estimated completion
-time calculated in the process's local timezone.
+time in the host's local timezone.
 
 ## License
 

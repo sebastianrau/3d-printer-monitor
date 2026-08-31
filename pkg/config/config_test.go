@@ -26,6 +26,23 @@ printers:
 	}
 }
 
+func TestTelegramTimeoutDefaults(t *testing.T) {
+	c := loadTestConfig(t, `
+printers:
+  - type: bambu
+    bambu:
+      host: 192.0.2.1
+      serial: SERIAL
+      access_code: CODE
+`)
+	if got := c.Messaging.Telegram.TimeoutSeconds; got != 60 {
+		t.Fatalf("Telegram HTTP timeout = %d, want 60", got)
+	}
+	if got := c.Messaging.Telegram.CommandPollTimeoutSeconds; got != 60 {
+		t.Fatalf("command poll timeout = %d, want 60", got)
+	}
+}
+
 func TestFlatBambuConfigurationIsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte("printers:\n  - name: Office\n    model: p1s\n    host: 192.0.2.1\n    serial: SERIAL\n    access_code: CODE\n")

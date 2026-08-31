@@ -54,8 +54,9 @@ func (r *Monitor) Identifier() string { return r.Config.Identifier() }
 func (r *Monitor) Run(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	r.cancel = cancel
-	r.wg.Add(1)
-	go r.worker(ctx)
+	r.wg.Add(2)
+	go r.eventWorker(ctx)
+	go r.statusWorker(ctx)
 	err := r.Printer.Start(ctx, func(report map[string]any) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -103,7 +104,10 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		}
 		r.updateState(baseline)
 		r.initialized = true
-		if oneOf(gstate, "PREPARE", "RUNNING", "PAUSE") {
+		// Initial MQTT reports can be partial. Wait for the task identity before
+		// creating the editable status so later reports keep updating the same
+		// Telegram message instead of leaving an orphan behind.
+		if task != "" && oneOf(gstate, "PREPARE", "RUNNING", "PAUSE") {
 			r.progressKey = r.Identifier() + ":" + task
 			r.enqueueStatus(statusEvent{
 				key: r.progressKey,
@@ -236,7 +240,7 @@ func (r *Monitor) RequestManualSnapshot() bool {
 		return false
 	}
 }
-func (r *Monitor) worker(ctx context.Context) {
+func (r *Monitor) eventWorker(ctx context.Context) {
 	defer r.wg.Done()
 	for {
 		select {
@@ -244,6 +248,16 @@ func (r *Monitor) worker(ctx context.Context) {
 			return
 		case e := <-r.events:
 			r.deliver(ctx, e)
+		}
+	}
+}
+
+func (r *Monitor) statusWorker(ctx context.Context) {
+	defer r.wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
 		case e := <-r.statusEvents:
 			r.deliverStatus(ctx, e)
 		}

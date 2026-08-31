@@ -80,6 +80,7 @@ docker run --detach \
 	--restart unless-stopped \
 	--user "$(id -u):$(id -g)" \
 	--volume "$CONFIG_PATH:/etc/3d-printer-monitor/config.yaml:ro" \
+	--volume /etc/localtime:/etc/localtime:ro \
 	"$IMAGE" >/dev/null
 
 sleep 2

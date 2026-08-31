@@ -18,7 +18,7 @@ func TestCameraWarmupFilter(t *testing.T) {
 	}
 }
 
-func TestRTSPCameraDisablesTLSVerificationForPrinterCertificate(t *testing.T) {
+func TestRTSPCameraUsesPortableFFmpegArguments(t *testing.T) {
 	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
 	argsFile := filepath.Join(t.TempDir(), "args")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FFMPEG_ARGS_FILE\"\nprintf '\\377\\330\\377\\331'\n"
@@ -40,7 +40,10 @@ func TestRTSPCameraDisablesTLSVerificationForPrinterCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(args), "-tls_verify\n0\n") {
-		t.Fatalf("ffmpeg arguments do not disable TLS verification: %s", args)
+	if strings.Contains(string(args), "tls_verify") {
+		t.Fatalf("ffmpeg arguments contain unsupported tls_verify option: %s", args)
+	}
+	if !strings.Contains(string(args), "-i\nrtsps://bblp:secret@192.0.2.1:322/streaming/live/1\n") {
+		t.Fatalf("ffmpeg arguments do not contain the RTSPS input: %s", args)
 	}
 }
