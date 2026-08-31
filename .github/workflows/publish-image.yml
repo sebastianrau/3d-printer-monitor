@@ -50,6 +50,19 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
+      - name: Determine application version
+        id: app-version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            version="$RELEASE_TAG"
+          else
+            version="dev-${GITHUB_SHA::12}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build and publish image
         uses: docker/build-push-action@v7
         with:
@@ -58,5 +71,7 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.app-version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
