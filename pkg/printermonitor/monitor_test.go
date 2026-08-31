@@ -30,6 +30,23 @@ type progressMessenger struct{ noopMessenger }
 func (progressMessenger) PublishPrintStatus(context.Context, string, messenger.PrintStatus, bool, bool) error {
 	return nil
 }
+
+type blockingSnapshotPrinter struct{ fakePrinter }
+
+func (blockingSnapshotPrinter) CaptureSnapshot(ctx context.Context) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+type notifyingProgressMessenger struct {
+	noopMessenger
+	delivered chan struct{}
+}
+
+func (m notifyingProgressMessenger) PublishPrintStatus(context.Context, string, messenger.PrintStatus, bool, bool) error {
+	m.delivered <- struct{}{}
+	return nil
+}
 func testMonitor(t *testing.T) *Monitor {
 	t.Helper()
 	p := config.Printer{Name: "Test", ID: "test", Type: "test", EventQueueSize: 10, DeliveryAttempts: 1, Notifications: map[string]bool{}}
@@ -63,6 +80,54 @@ func TestActiveBaselineRestartsProgressTracking(t *testing.T) {
 	status := <-monitor.statusEvents
 	if !status.immediate || status.status.Progress == nil || *status.status.Progress != 42 || status.status.State != "RUNNING" {
 		t.Fatalf("restart status = %#v", status)
+	}
+}
+
+func TestPartialActiveBaselineWaitsForJobIdentity(t *testing.T) {
+	printer := config.Printer{Name: "P1S", ID: "p1s", EventQueueSize: 10, DeliveryAttempts: 1, Notifications: map[string]bool{}}
+	monitor, err := NewMonitor(printer, fakePrinter{}, progressMessenger{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := monitor.Evaluate(map[string]any{"gcode_state": "RUNNING", "mc_percent": 0}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case status := <-monitor.statusEvents:
+		t.Fatalf("status created before task identity was known: %#v", status)
+	default:
+	}
+	if err := monitor.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "job", "subtask_name": "Part", "mc_percent": 1}); err != nil {
+		t.Fatal(err)
+	}
+	status := <-monitor.statusEvents
+	if status.key != "p1s:job" || !status.immediate || status.status.Job != "Part" {
+		t.Fatalf("first complete status = %#v", status)
+	}
+}
+
+func TestBlockedSnapshotDoesNotBlockStatusDelivery(t *testing.T) {
+	delivered := make(chan struct{}, 1)
+	printer := config.Printer{Name: "P2S", ID: "p2s", EventQueueSize: 10, DeliveryAttempts: 1, Notifications: map[string]bool{}}
+	monitor, err := NewMonitor(printer, blockingSnapshotPrinter{}, notifyingProgressMessenger{delivered: delivered})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	monitor.wg.Add(2)
+	go monitor.eventWorker(ctx)
+	go monitor.statusWorker(ctx)
+	t.Cleanup(func() {
+		cancel()
+		monitor.wg.Wait()
+	})
+
+	monitor.events <- Event{Key: "finished", Label: "99 % erreicht"}
+	monitor.statusEvents <- statusEvent{key: "p2s:job", status: messenger.PrintStatus{State: "RUNNING"}}
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("status delivery was blocked by snapshot capture")
 	}
 }
 func TestMilestonesAndNoDuplicateFinished(t *testing.T) {
