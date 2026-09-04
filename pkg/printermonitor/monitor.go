@@ -192,7 +192,13 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		r.updateState(map[string]any{"last_gcode_state": gstate})
 	}
 	persisted = r.currentState()
-	if newJob && hadHistory && r.Config.Notify("started") && oneOf(gstate, "PREPARE", "RUNNING") && !asBool(persisted["started_sent"]) {
+	// PREPARE includes Bambu Studio's G-code download phase, during which the
+	// camera service may not respond. Create the editable status immediately,
+	// but wait for RUNNING before capturing the start image. Keeping the event
+	// pending also permits another report to retry after all delivery attempts
+	// failed while the camera was still becoming available.
+	startReady := gstate == "RUNNING" && r.progressKey != ""
+	if startReady && hadHistory && r.Config.Notify("started") && !asBool(persisted["started_sent"]) {
 		return r.fire(Event{"started", "Druck gestartet", value(progress), layer, total, "started_sent"})
 	}
 	if r.Config.Notify("finished") && progress != nil && *progress >= 99 && previousProgress != nil && *previousProgress < 99 && !asBool(persisted["finished_sent"]) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 )
 
 var log = logger.WithPackage("main")
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -33,6 +35,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if options.showVersion {
+		fmt.Printf("3d-printer-monitor %s\n", version)
+		return nil
+	}
 	c, err := config.Load(options.configPath, options.requiresMessenger(), options.requiresChatID())
 	if err != nil {
 		return err
@@ -40,10 +46,44 @@ func run() error {
 	if err := logger.Configure(c.LogLevel); err != nil {
 		return err
 	}
+	logStartupConfig(c, options.configPath)
 	if handled, err := handleOneShotMode(context.Background(), c, options); handled {
 		return err
 	}
 	return runMonitoring(c)
+}
+
+func logStartupConfig(c config.Config, configPath string) {
+	enabled := 0
+	for _, printer := range c.Printers {
+		if printer.IsEnabled() {
+			enabled++
+		}
+	}
+	telegram := c.Messaging.Telegram
+	commandsEnabled := telegram.CommandsEnabled == nil || *telegram.CommandsEnabled
+	log.Infof("starting 3d-printer-monitor: version=%s config=%q log_level=%s local_timezone=%s messaging=%s printers=%d enabled=%d", version, configPath, c.LogLevel, time.Now().Location(), c.Messaging.Provider, len(c.Printers), enabled)
+	log.Infof("Telegram: target_configured=%t commands_enabled=%t request_timeout=%ds command_poll_timeout=%ds command_cooldown=%.1fs disable_notification=%t protect_content=%t", telegram.ChatID != "", commandsEnabled, telegram.TimeoutSeconds, telegram.CommandPollTimeoutSeconds, telegram.CommandCooldownSeconds, telegram.DisableNotification, telegram.ProtectContent)
+	for _, printer := range c.Printers {
+		bambu := printer.BambuSettings()
+		log.Infof("printer: name=%q id=%q enabled=%t type=%s model=%s host=%q event_queue=%d delivery_attempts=%d delivery_retry=%.1fs camera_timeout=%.1fs camera_warmup_frames=%d mqtt_reconnect=%d-%ds notifications=%s", printer.DisplayName(), printer.Identifier(), printer.IsEnabled(), printer.Type, bambu.Model, bambu.Host, printer.EventQueueSize, printer.DeliveryAttempts, printer.DeliveryRetrySeconds, bambu.CameraTimeoutSeconds, bambu.WarmupFrames(), bambu.MQTTReconnectMinSeconds, bambu.MQTTReconnectMaxSeconds, notificationSummary(printer.Notifications))
+	}
+}
+
+func notificationSummary(notifications map[string]bool) string {
+	if len(notifications) == 0 {
+		return "defaults"
+	}
+	keys := make([]string, 0, len(notifications))
+	for key := range notifications {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, key+"="+strconv.FormatBool(notifications[key]))
+	}
+	return strings.Join(values, ",")
 }
 
 type options struct {
@@ -53,6 +93,7 @@ type options struct {
 	findTelegramChatID bool
 	telegramWait       time.Duration
 	telegramIncludeOld bool
+	showVersion        bool
 }
 
 func parseOptions() (options, error) {
@@ -65,6 +106,7 @@ func parseOptions() (options, error) {
 	flag.BoolVar(&result.findTelegramChatID, "find-telegram-chat-id", false, "wait for /id and report the Telegram chat ID")
 	flag.Var(&telegramWait, "telegram-wait", "seconds to wait for /id")
 	flag.BoolVar(&result.telegramIncludeOld, "telegram-include-old", false, "include pending updates when finding chat IDs")
+	flag.BoolVar(&result.showVersion, "version", false, "print version and exit")
 	flag.Parse()
 	result.testPrinter = strings.TrimSpace(result.testPrinter)
 	result.testTimeout = time.Duration(testTimeout)

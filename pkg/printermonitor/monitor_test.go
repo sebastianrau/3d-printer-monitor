@@ -152,6 +152,31 @@ func TestMilestonesAndNoDuplicateFinished(t *testing.T) {
 	default:
 	}
 }
+
+func TestStartSnapshotWaitsForRunningAfterPrepare(t *testing.T) {
+	r := testMonitor(t)
+	_ = r.Evaluate(map[string]any{"gcode_state": "IDLE", "mc_percent": 0})
+	_ = r.Evaluate(map[string]any{"gcode_state": "PREPARE", "task_id": "one", "mc_percent": 0})
+	select {
+	case e := <-r.events:
+		t.Fatalf("unexpected event during PREPARE: %s", e.Key)
+	default:
+	}
+	_ = r.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "one", "mc_percent": 0})
+	if e := <-r.events; e.Key != "started" {
+		t.Fatalf("got %s, want started", e.Key)
+	}
+}
+
+func TestStartSnapshotForJobStartingInRunning(t *testing.T) {
+	r := testMonitor(t)
+	_ = r.Evaluate(map[string]any{"gcode_state": "IDLE", "mc_percent": 0})
+	_ = r.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "one", "mc_percent": 0})
+	if e := <-r.events; e.Key != "started" {
+		t.Fatalf("got %s, want started", e.Key)
+	}
+}
+
 func TestLayerAndPauseTransitions(t *testing.T) {
 	r := testMonitor(t)
 	_ = r.Evaluate(map[string]any{"gcode_state": "IDLE"})

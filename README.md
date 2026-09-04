@@ -164,6 +164,11 @@ curl -fsSL https://raw.githubusercontent.com/sebastianrau/3d-printer-monitor/mai
 During normal monitoring, camera images are held only in memory and passed
 directly to the messenger; no image files are written to the device.
 
+The running version is included in the startup log. Use
+`3d-printer-monitor --version` to print it directly. Release container images
+receive their version from the published GitHub tag; local `make build` builds
+use `git describe`.
+
 Milestone and duplicate-suppression state also remains in memory. On startup,
 the first printer report becomes the baseline so an already running print does
 not produce old milestone notifications. The application writes no runtime

@@ -59,7 +59,7 @@ printers:
 
     # Each omitted notification key defaults to true.
     notifications:
-      # New job in PREPARE/RUNNING after the initial startup baseline.
+      # First RUNNING report after a new job leaves its preparation phase.
       started: true
       # First active report with layer_num >= 2.
       layer1: true
