@@ -27,19 +27,20 @@ type statusEvent struct {
 	immediate, terminal bool
 }
 type Monitor struct {
-	Config       config.Printer
-	Printer      Printer
-	Messenger    messenger.Messenger
-	mu           sync.Mutex
-	printState   map[string]any
-	stateMu      sync.Mutex
-	state        map[string]any
-	initialized  bool
-	events       chan Event
-	statusEvents chan statusEvent
-	progressKey  string
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
+	Config        config.Printer
+	Printer       Printer
+	Messenger     messenger.Messenger
+	mu            sync.Mutex
+	printState    map[string]any
+	stateMu       sync.Mutex
+	state         map[string]any
+	initialized   bool
+	events        chan Event
+	statusEvents  chan statusEvent
+	progressKey   string
+	staleProgress *int
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
 }
 
 func NewMonitor(c config.Printer, p Printer, m messenger.Messenger) (*Monitor, error) {
@@ -91,6 +92,17 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		return nil
 	}
 	if !r.initialized {
+		if gstate == "PREPARE" {
+			if progress != nil && *progress > 2 {
+				r.staleProgress = progress
+			}
+			r.updateState(map[string]any{"task_id": task, "last_progress": 0, "last_gcode_state": gstate})
+			r.initialized = true
+			if task != "" {
+				r.progressKey = r.Identifier() + ":" + task
+			}
+			return nil
+		}
 		baseline := map[string]any{
 			"task_id":          task,
 			"last_progress":    value(progress),
@@ -107,7 +119,7 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		// Initial MQTT reports can be partial. Wait for the task identity before
 		// creating the editable status so later reports keep updating the same
 		// Telegram message instead of leaving an orphan behind.
-		if task != "" && oneOf(gstate, "PREPARE", "RUNNING", "PAUSE") {
+		if task != "" && oneOf(gstate, "RUNNING", "PAUSE") {
 			r.progressKey = r.Identifier() + ":" + task
 			r.enqueueStatus(statusEvent{
 				key: r.progressKey,
@@ -129,12 +141,33 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 	hadHistory := persisted["last_gcode_state"] != nil || persisted["task_id"] != nil || persisted["last_progress"] != nil
 	newJob := (task != "" && previousTask != "" && task != previousTask) || (task != "" && previousTask == "" && oneOf(gstate, "RUNNING", "PREPARE", "PAUSE")) || (progress != nil && *progress <= 2 && intValue(persisted["last_progress"]) > 10 && oneOf(gstate, "RUNNING", "PREPARE"))
 	if newJob {
+		r.staleProgress = nil
+		if progress != nil && previousProgress != nil && *progress == *previousProgress && *progress > 2 {
+			r.staleProgress = progress
+		}
+	}
+	// Reports can retain the previous job's telemetry across PREPARE and
+	// RUNNING. Suppress it for status updates and milestones until it changes.
+	staleTelemetry := r.staleProgress != nil && !oneOf(gstate, "FINISH", "FAILED", "IDLE") && (progress == nil || *progress == *r.staleProgress)
+	if staleTelemetry {
+		zero := 0
+		progress, layer, total = &zero, nil, nil
+	} else {
+		r.staleProgress = nil
+	}
+	if newJob {
 		r.updateState(map[string]any{"task_id": task, "started_sent": false, "layer1_sent": false, "progress50_sent": false, "finished_sent": false, "pause_sent": false, "failed_sent": false, "last_progress": value(progress), "last_gcode_state": ""})
 		persisted = r.currentState()
 		r.progressKey = r.Identifier() + ":" + task
 	}
 	if task != "" && asString(persisted["task_id"]) != task {
 		r.updateState(map[string]any{"task_id": task})
+	}
+	// Keep the new job reset throughout the G-code download. Publish status
+	// and capture the start snapshot only after PREPARE ends.
+	if gstate == "PREPARE" {
+		r.updateState(map[string]any{"last_progress": 0, "last_gcode_state": gstate})
+		return nil
 	}
 	if progress != nil {
 		r.updateState(map[string]any{"last_progress": *progress})
@@ -144,6 +177,9 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		statusState := gstate
 		statusProgress, statusLayer, statusTotal := progress, layer, total
 		statusRemaining := asInt(firstValue(p, "mc_remaining_time", "remaining_time"))
+		if staleTelemetry {
+			statusRemaining = nil
+		}
 		if newJob {
 			statusState = "STARTED"
 			// Bambu can announce the new task before replacing the previous
@@ -193,8 +229,8 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 	}
 	persisted = r.currentState()
 	// PREPARE includes Bambu Studio's G-code download phase, during which the
-	// camera service may not respond. Create the editable status immediately,
-	// but wait for RUNNING before capturing the start image. Keeping the event
+	// camera service may not respond. Wait for RUNNING before capturing the
+	// start image. Keeping the event
 	// pending also permits another report to retry after all delivery attempts
 	// failed while the camera was still becoming available.
 	startReady := gstate == "RUNNING" && r.progressKey != ""

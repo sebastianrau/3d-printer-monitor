@@ -177,6 +177,28 @@ func TestStartSnapshotForJobStartingInRunning(t *testing.T) {
 	}
 }
 
+func TestPrepareBaselineWaitsForDownload(t *testing.T) {
+	r := testMonitor(t)
+	r.Messenger = progressMessenger{}
+	for i := 0; i < 2; i++ {
+		if err := r.Evaluate(map[string]any{"gcode_state": "PREPARE", "task_id": "one", "mc_percent": 100}); err != nil {
+			t.Fatal(err)
+		}
+		if len(r.events) != 0 || len(r.statusEvents) != 0 || intValue(r.currentState()["last_progress"]) != 0 {
+			t.Fatal("download must remain reset without notifications")
+		}
+	}
+	if err := r.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "one", "mc_percent": 0}); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.events) != 1 || len(r.statusEvents) != 1 {
+		t.Fatal("expected start snapshot and status after download")
+	}
+	if event := <-r.events; event.Key != "started" || event.Progress != 0 {
+		t.Fatalf("unexpected start event: %#v", event)
+	}
+}
+
 func TestLayerAndPauseTransitions(t *testing.T) {
 	r := testMonitor(t)
 	_ = r.Evaluate(map[string]any{"gcode_state": "IDLE"})
@@ -205,11 +227,69 @@ func TestNewJobStatusDoesNotReusePreviousJobProgress(t *testing.T) {
 	}
 	_ = monitor.Evaluate(map[string]any{"gcode_state": "FINISH", "task_id": "old", "mc_percent": 100, "layer_num": 30, "total_layer_num": 30})
 	_ = monitor.Evaluate(map[string]any{"gcode_state": "PREPARE", "task_id": "new", "subtask_name": "Next part", "mc_percent": 100, "layer_num": 30, "total_layer_num": 30, "mc_remaining_time": 0})
+	if len(monitor.statusEvents) != 0 {
+		t.Fatal("status published during download")
+	}
+	_ = monitor.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "new", "mc_percent": 100, "layer_num": 30, "total_layer_num": 30, "mc_remaining_time": 0})
 	status := <-monitor.statusEvents
 	if status.status.Progress == nil || *status.status.Progress != 0 {
 		t.Fatalf("start progress = %v, want 0", status.status.Progress)
 	}
 	if status.status.Layer != nil || status.status.TotalLayers != nil || status.status.RemainingMinutes != nil {
 		t.Fatalf("start status reused stale job details: %#v", status.status)
+	}
+}
+
+func TestStartIgnoresStaleTelemetryUntilProgressChanges(t *testing.T) {
+	for _, prepare := range []bool{false, true} {
+		t.Run(map[bool]string{false: "running", true: "prepare_then_running"}[prepare], func(t *testing.T) {
+			r := testMonitor(t)
+			r.Messenger = progressMessenger{}
+			report := func(state, task string, progress int) statusEvent {
+				t.Helper()
+				if err := r.Evaluate(map[string]any{"gcode_state": state, "task_id": task, "mc_percent": progress, "layer_num": 30, "total_layer_num": 30, "mc_remaining_time": 0}); err != nil {
+					t.Fatal(err)
+				}
+				if task == "old" || state == "PREPARE" {
+					if len(r.statusEvents) != 0 || len(r.events) != 0 {
+						t.Fatal("notification published before download completed")
+					}
+					if state == "PREPARE" && intValue(r.currentState()["last_progress"]) != 0 {
+						t.Fatal("progress not reset during download")
+					}
+					return statusEvent{}
+				}
+				return <-r.statusEvents
+			}
+			report("FINISH", "old", 100)
+			if prepare {
+				report("PREPARE", "new", 100)
+				report("PREPARE", "new", 100)
+			}
+			status := report("RUNNING", "new", 100)
+			select {
+			case event := <-r.events:
+				if event.Key != "started" || event.Progress != 0 || event.Layer != nil || event.Total != nil {
+					t.Fatalf("start event reused stale telemetry: %#v", event)
+				}
+			default:
+				t.Fatal("missing start event")
+			}
+			for i := 0; i < 2; i++ {
+				if value(status.status.Progress) != 0 || status.status.Layer != nil || status.status.RemainingMinutes != nil {
+					t.Fatalf("status reused stale telemetry: %#v", status)
+				}
+				status = report("RUNNING", "new", 100)
+			}
+			select {
+			case event := <-r.events:
+				t.Fatalf("stale telemetry triggered milestone: %#v", event)
+			default:
+			}
+			status = report("RUNNING", "new", 3)
+			if value(status.status.Progress) != 3 || status.status.State != "RUNNING" {
+				t.Fatalf("fresh progress not restored: %#v", status)
+			}
+		})
 	}
 }
