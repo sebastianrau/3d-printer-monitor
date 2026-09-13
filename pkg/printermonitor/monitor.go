@@ -139,10 +139,20 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 	previousTask := asString(persisted["task_id"])
 	previousProgress := asInt(persisted["last_progress"])
 	hadHistory := persisted["last_gcode_state"] != nil || persisted["task_id"] != nil || persisted["last_progress"] != nil
-	newJob := (task != "" && previousTask != "" && task != previousTask) || (task != "" && previousTask == "" && oneOf(gstate, "RUNNING", "PREPARE", "PAUSE")) || (progress != nil && *progress <= 2 && intValue(persisted["last_progress"]) > 10 && oneOf(gstate, "RUNNING", "PREPARE"))
+	previousGState := strings.ToUpper(asString(persisted["last_gcode_state"]))
+	active := oneOf(gstate, "RUNNING", "PREPARE", "PAUSE")
+	// Task metadata may arrive while the merged report still describes the
+	// completed print. Wait for an active state before adopting that identity.
+	if !active && task != "" && task != previousTask {
+		return nil
+	}
+	starting := r.progressKey != "" && (previousGState == "PREPARE" || r.staleProgress != nil)
+	newJob := active && !starting && ((task != "" && task != previousTask) ||
+		(oneOf(previousGState, "FINISH", "FAILED", "IDLE") && oneOf(gstate, "PREPARE", "RUNNING")) ||
+		(progress != nil && *progress <= 2 && intValue(persisted["last_progress"]) > 10 && oneOf(gstate, "RUNNING", "PREPARE")))
 	if newJob {
 		r.staleProgress = nil
-		if progress != nil && previousProgress != nil && *progress == *previousProgress && *progress > 2 {
+		if progress != nil && *progress > 2 {
 			r.staleProgress = progress
 		}
 	}
@@ -173,6 +183,14 @@ func (r *Monitor) Evaluate(p map[string]any) error {
 		r.updateState(map[string]any{"last_progress": *progress})
 	}
 	previousState := strings.ToUpper(asString(persisted["last_gcode_state"]))
+	// Startup reports may arrive in pieces, including an old job's final
+	// progress or failure. Only notify for a print we have observed as active.
+	if r.progressKey == "" {
+		if gstate != "" {
+			r.updateState(map[string]any{"last_gcode_state": gstate})
+		}
+		return nil
+	}
 	if r.progressKey != "" {
 		statusState := gstate
 		statusProgress, statusLayer, statusTotal := progress, layer, total

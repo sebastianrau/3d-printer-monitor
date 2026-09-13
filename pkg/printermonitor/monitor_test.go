@@ -68,6 +68,36 @@ func TestFirstActiveObservationIsBaseline(t *testing.T) {
 	}
 }
 
+func TestInactiveStartupDoesNotNotify(t *testing.T) {
+	for _, state := range []string{"IDLE", "FINISH", "FAILED"} {
+		t.Run(state, func(t *testing.T) {
+			r := testMonitor(t)
+			r.Messenger = progressMessenger{}
+			// The initial state and the previous print's telemetry can arrive
+			// separately, including a final progress jump from 0 to 100.
+			for _, report := range []map[string]any{
+				{"mc_percent": 0},
+				{"gcode_state": state},
+				{"gcode_state": state, "mc_percent": 100, "layer_num": 357},
+				{"gcode_state": state, "task_id": "old", "mc_percent": 100},
+			} {
+				if err := r.Evaluate(report); err != nil {
+					t.Fatal(err)
+				}
+				if len(r.events) != 0 || len(r.statusEvents) != 0 {
+					t.Fatalf("inactive startup emitted notification for %#v", report)
+				}
+			}
+			if err := r.Evaluate(map[string]any{"gcode_state": "RUNNING", "task_id": "new", "mc_percent": 0}); err != nil {
+				t.Fatal(err)
+			}
+			if len(r.events) != 1 || len(r.statusEvents) != 1 {
+				t.Fatal("new print should still emit its start notifications")
+			}
+		})
+	}
+}
+
 func TestActiveBaselineRestartsProgressTracking(t *testing.T) {
 	printer := config.Printer{Name: "P1S", ID: "p1s", EventQueueSize: 10, DeliveryAttempts: 1, Notifications: map[string]bool{}}
 	monitor, err := NewMonitor(printer, fakePrinter{}, progressMessenger{})
@@ -291,5 +321,46 @@ func TestStartIgnoresStaleTelemetryUntilProgressChanges(t *testing.T) {
 				t.Fatalf("fresh progress not restored: %#v", status)
 			}
 		})
+	}
+}
+
+func TestStartupMetadataDoesNotCreateDuplicateStatus(t *testing.T) {
+	r := testMonitor(t)
+	r.Messenger = progressMessenger{}
+	reports := []map[string]any{
+		{"gcode_state": "FINISH", "task_id": "old", "mc_percent": 100},
+		// New metadata arrives before the printer replaces its old state.
+		{"gcode_state": "FINISH", "task_id": "file", "mc_percent": 100},
+		{"gcode_state": "PREPARE", "task_id": "file", "mc_percent": 100},
+		{"gcode_state": "PREPARE", "task_id": "task", "mc_percent": 100},
+		{"gcode_state": "RUNNING", "task_id": "task", "mc_percent": 100},
+		{"gcode_state": "RUNNING", "task_id": "final-task", "mc_percent": 100},
+		{"gcode_state": "RUNNING", "task_id": "final-task", "mc_percent": 0},
+	}
+	var key string
+	for i, report := range reports {
+		if err := r.Evaluate(report); err != nil {
+			t.Fatal(err)
+		}
+		if i < 4 {
+			if len(r.statusEvents) != 0 || len(r.events) != 0 {
+				t.Fatalf("report %d published before download ended", i)
+			}
+			continue
+		}
+		select {
+		case status := <-r.statusEvents:
+			if key == "" {
+				key = status.key
+			}
+			if status.key != key || status.terminal || value(status.status.Progress) != 0 {
+				t.Fatalf("report %d produced duplicate or stale status: %#v", i, status)
+			}
+		default:
+			t.Fatalf("report %d missing status", i)
+		}
+	}
+	if len(r.events) != 1 {
+		t.Fatalf("got %d milestones, want one start", len(r.events))
 	}
 }
